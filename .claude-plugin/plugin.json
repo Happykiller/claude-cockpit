@@ -1,0 +1,6 @@
+{
+  "name": "cockpit",
+  "version": "0.1.0",
+  "description": "Cockpit animé : activité de la session (modèle, effort, mode, limites, contexte) et frise du plan d'exécution",
+  "types": "./types/index.d.ts"
+}
