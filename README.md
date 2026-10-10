@@ -23,6 +23,19 @@ Le mod déclare deux outils, `mcp__cockpit__plan` (titre, étapes, estimation en
 
 Chargé par `CLAUDE_CODE_PLUGIN_DIRS` (bloc `env` de `~/.claude/settings.json`), qui pointe sur ce dossier : une modification se recharge à chaud.
 
+## Le fond du panneau
+
+Claude Code peint le panneau latéral avec la clé de thème `composerSidebarBackground`, un gris
+qu'aucun mod ne peut retirer. Pour que le cockpit garde le fond du terminal, un thème personnalisé
+la redéfinit, dans `~/.claude/themes/cockpit.json` :
+
+```json
+{ "name": "Sombre — panneau sans teinte", "base": "dark",
+  "overrides": { "composerSidebarBackground": "ansi:black" } }
+```
+
+puis `"theme": "custom:cockpit"` dans `~/.claude/settings.json` (ou `/theme`).
+
 ## Vérifier
 
 ```bash
