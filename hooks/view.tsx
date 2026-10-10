@@ -1,8 +1,8 @@
 import type { ElementTable, RenderChildren } from 'claude-code'
 
-import type { Activity, Plan, Step } from '../types'
+import type { Activity, BgTask, Memory, Plan, Step } from '../types'
 import {
-  bar, fmtClock, fmtDur, fmtEstimate, fmtTokens, fmtWhen, prettyModel, sparkline,
+  bar, fmtClock, fmtDur, fmtEstimate, fmtRatio, fmtTokens, fmtWhen, prettyModel, project, sparkline,
   SPINNER, stepElapsed, tone, totals, wave, MIN,
 } from './model'
 
@@ -16,6 +16,8 @@ export type ViewData = {
   n: number
   now: number
   working: boolean
+  bg: readonly BgTask[]
+  memory: Memory
   tz: number
   cols: number
   rows: number
@@ -33,7 +35,9 @@ const DM = 'inactive'
 const FA = 'ansi256(8)'
 const WH = 'ansi256(15)'
 const TRACK = 'ansi256(8)'
+/** The empty part of a gauge: a light shade a cut above the frames, so the gauge keeps its length. */
 const EMPTY = '░'
+const EMPTY_TONE = DM
 
 /** Cells kept clear on each side of the panel's body. */
 const PAD_X = 2
@@ -52,10 +56,21 @@ const MODES: Record<string, { label: string; color: string; isSolid?: boolean }>
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
 
 const spaced = (s: string) => s.split('').join(' ')
-const money = (usd: number | undefined) => (usd === undefined ? '—' : `${usd.toFixed(2).replace('.', ',')} $`)
+/** What the session would have cost at API prices: notional on a subscription. */
+const money = (usd: number | undefined) => (usd === undefined ? '—' : `≈ ${usd.toFixed(2).replace('.', ',')} $ API`)
 
 function limit(a: Activity, kind: string) {
   return a.limits.find(l => l.kind === kind)
+}
+
+function isRenewed(a: Activity, kind: string, now: number) {
+  const at = limit(a, kind)?.resetsAt
+  return at !== undefined && Date.parse(at) <= now
+}
+
+/** The window's use; a window past its end has renewed, whatever the last reading said. */
+function used(d: ViewData, kind: string) {
+  return isRenewed(d.activity, kind, d.now) ? 0 : limit(d.activity, kind)?.percentUsed
 }
 
 // ── Pieces both placements share ───────────────────────────────────────────
@@ -99,7 +114,7 @@ function Bar({ T, pct, width, color }: { T: T; pct: number; width: number; color
     <T wrap="truncate-end">
       <T color={color}>{whole}</T>
       {part && <T color={color}>{part}</T>}
-      <T color={TRACK}>{EMPTY.repeat(b.empty.length)}</T>
+      <T color={EMPTY_TONE}>{EMPTY.repeat(b.empty.length)}</T>
     </T>
   )
 }
@@ -128,7 +143,31 @@ function resetInfo(d: ViewData, kind: string, lead: string): [string, string, st
   if (!l) return ['pas encore de lecture', '']
   if (!l.resetsAt) return [lead, '—']
   const at = Date.parse(l.resetsAt)
+  if (at <= d.now) return ['fenêtre renouvelée', 'nouvelle lecture…']
   return [lead, fmtDur(at - d.now), ` · ${fmtWhen(at, d.now, d.tz)}`]
+}
+
+/** Where the 5-hour window is heading at the current pace, in one line. */
+function Pace({ E, d }: { E: Els; d: ViewData }) {
+  const { Box, Text } = E
+  const l = limit(d.activity, 'five_hour')
+  const p = project(d.activity.trail ?? [], l?.resetsAt ? Date.parse(l.resetsAt) : undefined, d.now)
+  if (!p) return <Text color={DM} wrap="truncate-end">au rythme actuel : pas encore lisible</Text>
+  if (p.kind === 'cap') {
+    const color = p.at - d.now < 30 * MIN ? HOT : WARN
+    return (
+      <Box justifyContent="space-between">
+        <Text color={color} wrap="truncate-end">⚑ au rythme actuel : 100 % avant la fin</Text>
+        <Box flexShrink={0} marginLeft={1}><Text bold color={color}>vers {fmtClock(p.at, d.tz)}</Text></Box>
+      </Box>
+    )
+  }
+  return (
+    <Box justifyContent="space-between">
+      <Text color={DM} wrap="truncate-end">au rythme actuel, à la fin de la fenêtre</Text>
+      <Box flexShrink={0} marginLeft={1}><Text color={TONE[tone(p.pct)]}>~{Math.round(p.pct)} %</Text></Box>
+    </Box>
+  )
 }
 
 /** The context as /context splits it: system, tools, messages, free, then the compaction reserve. */
@@ -157,7 +196,7 @@ function Context({ E, d, width }: { E: Els; d: ViewData; width: number }) {
       {head}
       <Text wrap="truncate-end">
         <Text color={ACC2}>{'█'.repeat(sys)}</Text><Text color={ACC2}>{'▓'.repeat(tools)}</Text><Text color={color}>{'█'.repeat(msgs)}</Text>
-        <Text color={TRACK}>{EMPTY.repeat(free)}</Text><Text color={WARN} dimColor>{'▒'.repeat(buf)}</Text>
+        <Text color={EMPTY_TONE}>{EMPTY.repeat(free)}</Text><Text color={WARN} dimColor>{'▒'.repeat(buf)}</Text>
       </Text>
       <Text wrap="truncate-end">
         <Text color={ACC2}>█</Text><Text color={DM}> système {share(p.system)}  </Text><Text color={ACC2}>▓</Text><Text color={DM}> outils {share(p.tools)}  </Text>
@@ -169,18 +208,21 @@ function Context({ E, d, width }: { E: Els; d: ViewData; width: number }) {
 }
 
 /** Output tokens per request, the newest cell lit while a turn runs. */
-function Flow({ E, d }: { E: Els; d: ViewData }) {
+function Flow({ E, d, width }: { E: Els; d: ViewData; width: number }) {
   const { Box, Text } = E
   const a = d.activity
-  const line = sparkline(a.flow, 22)
   const lastOut = a.flow.at(-1)
+  const right = `session ${a.startedAt ? fmtDur(d.now - a.startedAt) : '—'} · ${money(a.costUsd)}`
+  const out = lastOut === undefined ? '' : `  ↓ ${fmtTokens(lastOut)}`
+  const room = Math.max(4, Math.min(24, width - 'DÉBIT  '.length - out.length - right.length - 1))
+  const line = sparkline(a.flow, room)
   return (
     <Box justifyContent="space-between">
       <Text wrap="truncate-end">
         <Text bold color={DM}>DÉBIT  </Text>
         {line
           ? <Text><Text color={ACC}>{line.slice(0, -1)}</Text><Text bold color={d.working && d.n % 6 < 3 ? WH : ACC}>{line.slice(-1)}</Text></Text>
-          : <Text color={FA}>{wave(d.n, 12)}</Text>}
+          : <Text color={FA}>{wave(d.n, Math.min(12, room))}</Text>}
         {lastOut !== undefined && <Text color={DM}>  ↓ {fmtTokens(lastOut)}</Text>}
       </Text>
       <Box flexShrink={0} marginLeft={1}>
@@ -262,6 +304,7 @@ function stepTime(T: T, s: Step, now: number) {
   const est = s.estimateMin === undefined ? undefined : s.estimateMin * MIN
   if (s.status === 'pending') return <T color={DM}>{`~${fmtEstimate(s.estimateMin)}`}</T>
   if (s.status === 'skipped') return <T color={FA}>—</T>
+  if (s.untimed) return <T color={DM}>{`— / ${fmtEstimate(s.estimateMin)}`}</T>
   const el = stepElapsed(s, now)
   const isOver = est !== undefined && el > est * 1.05
   const isRunning = s.status === 'in_progress' || s.status === 'blocked'
@@ -337,21 +380,33 @@ export function Dock({ E, d }: { E: Els; d: ViewData }) {
           <Text bold color={DM}>EFFORT</Text>
           <Effort T={Text} effort={a.effort} />
         </Box>
-        <Gauge E={E} n={d.n} label="SESSION · 5 H" pct={limit(a, 'five_hour')?.percentUsed} width={W} info={resetInfo(d, 'five_hour', 'fin de fenêtre dans')} />
-        <Gauge E={E} n={d.n} label="SEMAINE" pct={limit(a, 'seven_day')?.percentUsed} width={W} info={resetInfo(d, 'seven_day', 'renouvellement dans')} />
+        <Box flexDirection="column">
+          <Gauge E={E} n={d.n} label="SESSION · 5 H" pct={used(d, 'five_hour')} width={W} info={resetInfo(d, 'five_hour', 'fin de fenêtre dans')} />
+          <Pace E={E} d={d} />
+        </Box>
+        <Gauge E={E} n={d.n} label="SEMAINE" pct={used(d, 'seven_day')} width={W} info={resetInfo(d, 'seven_day', 'renouvellement dans')} />
         <Context E={E} d={d} width={W} />
-        <Flow E={E} d={d} />
+        <Flow E={E} d={d} width={W} />
+        {d.bg.length > 0 && <Background E={E} d={d} W={W} />}
       </Box>
 
       <Box marginTop={1} flexGrow={1}>
-        {d.plan ? <DockPlan E={E} d={d} plan={d.plan} W={W} /> : <Idle E={E} d={d} W={W} />}
+        {d.plan && !isFaded(d.plan, d.now) ? <DockPlan E={E} d={d} plan={d.plan} W={W} /> : <Idle E={E} d={d} W={W} />}
       </Box>
     </Box>
   )
 }
 
+/** A finished plan stays on screen this long, then gives way to the history. */
+const FADE_MS = 10 * MIN
+
+function isFaded(plan: Plan, now: number) {
+  return plan.finishedAt !== undefined && now - plan.finishedAt > FADE_MS
+}
+
 function Idle({ E, d, W }: { E: Els; d: ViewData; W: number }) {
   const { Box, Text } = E
+  const recent = d.memory.recent.slice(0, 5)
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Heading E={E} title="PLAN" width={W} />
@@ -359,6 +414,69 @@ function Idle({ E, d, W }: { E: Els; d: ViewData; W: number }) {
         <Text color={ACC}>{wave(d.n, Math.min(32, W))}</Text>
         <Text color={DM}>la frise apparaît dès que Claude déclare un plan</Text>
       </Box>
+      {recent.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Heading E={E} title="DERNIERS PLANS" width={W} />
+          <Box flexDirection="column" marginTop={1}>
+            {recent.map(r => (
+              <Box justifyContent="space-between">
+                <Text wrap="truncate-end"><Text color={OK}>✓</Text> <Text color={WH}>{r.title}</Text></Text>
+                <Box flexShrink={0} marginLeft={1}>
+                  <Text><Text color={WH}>{fmtDur(r.realMs)}</Text><Text color={DM}>{` / ~${fmtEstimate(r.estimateMin)} · ${fmtWhen(r.finishedAt, d.now, d.tz)}`}</Text></Text>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      )}
+      <Box flexGrow={1} />
+      <Calibration E={E} d={d} />
+    </Box>
+  )
+}
+
+/** What the clock says of Claude's estimates, across sessions. */
+function Calibration({ E, d, remainingMs }: { E: Els; d: ViewData; remainingMs?: number }) {
+  const { Text } = E
+  const r = d.memory.ratio
+  if (r === undefined) return <Text color={DM} wrap="truncate-end">calibrage : {d.memory.count} / 5 étapes mesurées</Text>
+  const color = r > 1.25 || r < 0.75 ? WARN : OK
+  return (
+    <Text wrap="truncate-end">
+      <Text color={DM}>calibrage </Text><Text bold color={color}>{fmtRatio(r)}</Text>
+      <Text color={DM}>{` le réel sur l'estimé (${d.memory.count} étapes)`}</Text>
+      {remainingMs !== undefined && remainingMs > 0 && <Text><Text color={DM}> · fin réaliste </Text><Text bold color={WH}>{fmtClock(d.now + remainingMs * r, d.tz)}</Text></Text>}
+    </Text>
+  )
+}
+
+/** The work the session left running: shells, subagents, monitors. */
+function Background({ E, d, W }: { E: Els; d: ViewData; W: number }) {
+  const { Box, Text } = E
+  const count = (kind: BgTask['kind']) => d.bg.filter(t => t.kind === kind).length
+  const parts = [
+    count('agent') && `${count('agent')} agent${count('agent') > 1 ? 's' : ''}`,
+    count('shell') && `${count('shell')} commande${count('shell') > 1 ? 's' : ''}`,
+    count('other') && `${count('other')} autre${count('other') > 1 ? 's' : ''}`,
+  ].filter(Boolean).join(' · ')
+  const shown = [...d.bg].sort((a, b) => a.startedAt - b.startedAt).slice(0, 3)
+  return (
+    <Box flexDirection="column">
+      <Box justifyContent="space-between">
+        <Text bold color={DM}>EN FOND</Text>
+        <Text color={WH}>{parts}</Text>
+      </Box>
+      {shown.map(t => (
+        <Box justifyContent="space-between">
+          <Text wrap="truncate-end">
+            <Text color={ACC}>{SPINNER[(d.n + t.startedAt) % SPINNER.length]}</Text>
+            <Text color={DM}>{` ${t.kind === 'agent' ? 'agent' : t.kind === 'shell' ? 'shell' : 'tâche'}  `}</Text>
+            <Text color={WH}>{t.label}</Text>
+          </Text>
+          <Box flexShrink={0} marginLeft={1}><Text color={DM}>{fmtDur(d.now - t.startedAt)}</Text></Box>
+        </Box>
+      ))}
+      {d.bg.length > shown.length && <Text color={DM}>{`  … et ${d.bg.length - shown.length} de plus`}</Text>}
     </Box>
   )
 }
@@ -397,6 +515,8 @@ function DockPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
           <Tile E={E} label="RESTE ≈" value={allDone ? 'fini' : `${fmtDur(t.remainingMs)}${t.hasUnknown ? ' +?' : ''}`} color={ACC} />
           <Tile E={E} label="FIN ≈" value={allDone ? '✓' : fmtClock(d.now + t.remainingMs, d.tz)} color={ACC} />
         </Box>
+        {plan.steps.some(s => s.untimed) && <Text color={DM} wrap="truncate-end">— : étape close sans avoir été ouverte, non chronométrée</Text>}
+        <Calibration E={E} d={d} remainingMs={allDone || t.hasUnknown ? undefined : t.remainingMs} />
       </Box>
     </Box>
   )
@@ -443,11 +563,12 @@ export function Band({ E, d }: { E: Els; d: ViewData }) {
         </Box>
       </Box>
       <Box gap={3}>
-        <Box width={colW}><Gauge E={E} n={d.n} label="SESSION · 5 H" pct={limit(a, 'five_hour')?.percentUsed} width={colW} info={resetInfo(d, 'five_hour', 'fin dans')} /></Box>
-        <Box width={colW}><Gauge E={E} n={d.n} label="SEMAINE" pct={limit(a, 'seven_day')?.percentUsed} width={colW} info={resetInfo(d, 'seven_day', 'renouvellement')} /></Box>
+        <Box width={colW} flexDirection="column"><Gauge E={E} n={d.n} label="SESSION · 5 H" pct={used(d, 'five_hour')} width={colW} info={resetInfo(d, 'five_hour', 'fin dans')} /><Pace E={E} d={d} /></Box>
+        <Box width={colW}><Gauge E={E} n={d.n} label="SEMAINE" pct={used(d, 'seven_day')} width={colW} info={resetInfo(d, 'seven_day', 'renouvellement')} /></Box>
         <Box width={colW} flexDirection="column"><Context E={E} d={d} width={colW} /></Box>
       </Box>
-      {d.plan ? <BandPlan E={E} d={d} plan={d.plan} W={W} /> : (
+      {d.bg.length > 0 && <BandBackground E={E} d={d} />}
+      {d.plan && !isFaded(d.plan, d.now) ? <BandPlan E={E} d={d} plan={d.plan} W={W} /> : (
         <Text><Text bold color={DM}>{spaced('PLAN')}  </Text><Text color={ACC}>{wave(d.n, 24)}</Text><Text color={DM}>  la frise apparaît dès que Claude déclare un plan</Text></Text>
       )}
     </Box>
@@ -508,6 +629,24 @@ function BandPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
         </Text>
       )}
     </Box>
+  )
+}
+
+function BandBackground({ E, d }: { E: Els; d: ViewData }) {
+  const { Text } = E
+  const oldest = [...d.bg].sort((a, b) => a.startedAt - b.startedAt)
+  return (
+    <Text wrap="truncate-end">
+      <Text bold color={DM}>{spaced('EN FOND')}  </Text>
+      {oldest.map((t, i) => (
+        <Text>
+          {i > 0 && <Text color={DM}>   ·   </Text>}
+          <Text color={ACC}>{SPINNER[(d.n + t.startedAt) % SPINNER.length]} </Text>
+          <Text color={WH}>{t.label}</Text>
+          <Text color={DM}>{` ${fmtDur(d.now - t.startedAt)}`}</Text>
+        </Text>
+      ))}
+    </Text>
   )
 }
 

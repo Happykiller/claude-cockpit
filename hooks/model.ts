@@ -1,4 +1,4 @@
-import type { Plan, Step, StepStatus } from '../types'
+import type { Plan, PlanSummary, Step, StepStatus } from '../types'
 
 export const MIN = 60_000
 
@@ -145,29 +145,41 @@ export function setPlan(prev: Plan | null, input: PlanInput, now: number): Plan 
   }
 }
 
-/** Moves one step; whatever it skipped over starts where the last one ended. */
+/**
+ * Moves one step. A step closed without having been opened starts where the
+ * last one ended, and says its time is a guess (`untimed`).
+ */
 export function moveStep(plan: Plan, index: number, status: StepStatus, now: number, extra: { note?: string; estimateMin?: number } = {}): Plan {
   const steps = plan.steps.map(s => ({ ...s }))
   const step = steps[index]
   if (!step) return plan
   const lastEnd = Math.max(plan.createdAt, ...steps.map(s => s.endedAt ?? 0))
-  if (status === 'in_progress') {
+  if (status === 'in_progress' || status === 'blocked') {
+    if (step.untimed) {
+      step.startedAt = now
+      delete step.untimed
+    }
     step.startedAt ??= now
     step.endedAt = undefined
+  }
+  if (status === 'in_progress') {
     for (const other of steps) if (other !== step && other.status === 'in_progress') other.status = 'pending'
   }
   if (status === 'completed' || status === 'skipped') {
-    step.startedAt ??= lastEnd
+    if (step.startedAt === undefined) {
+      step.startedAt = lastEnd
+      step.untimed = true
+    }
     step.endedAt = now
   }
-  if (status === 'blocked') step.startedAt ??= now
   step.status = status
   if (extra.note !== undefined && extra.note !== step.note) {
     if (step.note) step.done = [...(step.done ?? []), step.note].slice(-4)
     step.note = extra.note
   }
   if (extra.estimateMin !== undefined) step.estimateMin = extra.estimateMin
-  return { ...plan, steps }
+  const isFinished = steps.some(s => s.status === 'completed') && steps.every(s => s.status === 'completed' || s.status === 'skipped')
+  return { ...plan, steps, finishedAt: isFinished ? (plan.finishedAt ?? now) : undefined }
 }
 
 type Todo = { content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm?: string }
@@ -180,6 +192,7 @@ export function fromTodos(prev: Plan | null, todos: readonly Todo[], now: number
     title: known?.title ?? 'Tâches',
     source: 'todo',
     createdAt: known?.createdAt ?? now,
+    finishedAt: known?.finishedAt,
     steps: todos.map((t, i) => {
       const title = stripEstimate(t.content)
       const was = known?.steps.find(s => s.title === title)
@@ -234,4 +247,68 @@ export function totals(plan: Plan, now: number): Totals {
   })
   if (current < 0) current = plan.steps.findIndex(s => s.status === 'pending')
   return { done, total: plan.steps.filter(s => s.status !== 'skipped').length, current, elapsedMs, remainingMs, hasUnknown }
+}
+
+// ── What the clock teaches about the estimates ─────────────────────────────
+
+/** `[estimated minutes, real minutes]` of each step `next` closed on the clock and `prev` had open. */
+export function measured(prev: Plan | null, next: Plan): [number, number][] {
+  const out: [number, number][] = []
+  next.steps.forEach(s => {
+    if (s.status !== 'completed' || s.untimed || s.estimateMin === undefined || s.startedAt === undefined || s.endedAt === undefined) return
+    const was = prev?.steps.find(p => p.id === s.id)
+    if (was?.status === 'completed') return
+    out.push([s.estimateMin, (s.endedAt - s.startedAt) / MIN])
+  })
+  return out
+}
+
+export const CALIBRATION_MIN = 5
+
+/** Real over estimated, summed so long steps weigh as they cost; absent below five steps. */
+export function ratioOf(samples: readonly (readonly [number, number])[]): number | undefined {
+  if (samples.length < CALIBRATION_MIN) return undefined
+  const est = samples.reduce((sum, [e]) => sum + e, 0)
+  const real = samples.reduce((sum, [, r]) => sum + r, 0)
+  return est > 0 ? real / est : undefined
+}
+
+export function summarize(plan: Plan, now: number): PlanSummary {
+  const live = plan.steps.filter(s => s.status !== 'skipped')
+  return {
+    title: plan.title,
+    finishedAt: plan.finishedAt ?? now,
+    steps: live.length,
+    estimateMin: live.reduce((sum, s) => sum + (s.estimateMin ?? 0), 0),
+    realMs: (plan.finishedAt ?? now) - Math.min(plan.createdAt, ...live.map(s => s.startedAt ?? plan.createdAt)),
+  }
+}
+
+/** `×1,4` */
+export function fmtRatio(r: number): string {
+  return `×${r.toFixed(1).replace('.', ',')}`
+}
+
+// ── Where the 5-hour window is heading ─────────────────────────────────────
+
+export type Projection = { kind: 'cap'; at: number } | { kind: 'reset'; pct: number }
+
+const SPAN_MIN = 10 * MIN
+const SPAN_MAX = 45 * MIN
+
+/**
+ * At the pace of the last three quarters of an hour (ten minutes at least):
+ * the moment the window fills, if that comes before it renews, else where it
+ * will stand when it does. Nothing while the pace cannot be read.
+ */
+export function project(trail: readonly (readonly [number, number])[], resetsAt: number | undefined, now: number): Projection | undefined {
+  const last = trail.at(-1)
+  if (!last || resetsAt === undefined || resetsAt <= now) return undefined
+  const from = trail.find(([t]) => t >= last[0] - SPAN_MAX)
+  if (!from || last[0] - from[0] < SPAN_MIN) return undefined
+  const rate = (last[1] - from[1]) / (last[0] - from[0])
+  if (rate <= 0) return { kind: 'reset', pct: last[1] }
+  const at = last[0] + (100 - last[1]) / rate
+  if (at < resetsAt) return { kind: 'cap', at: Math.max(now, at) }
+  return { kind: 'reset', pct: Math.min(100, last[1] + rate * (resetsAt - last[0])) }
 }

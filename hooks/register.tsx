@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Activity, ContextParts, Plan, StepStatus } from '../types'
-import { addTask, fromTodos, modeFromHint, moveStep, setPlan } from './model'
+import type { Activity, BgTask, ContextParts, Memory, Plan, PlanSummary, StepStatus } from '../types'
+import { addTask, fmtDur, fmtRatio, fromTodos, measured, modeFromHint, moveStep, ratioOf, setPlan, summarize } from './model'
 import type { PlanInput } from './model'
 import { Band, Dock } from './view'
 
@@ -14,12 +14,20 @@ const tick = atom({ plugin: 'cockpit', key: 'tick' } as const, { n: 0, now: 0 })
 const activity = atom({ plugin: 'cockpit', key: 'activity' } as const, { limits: [], history: [], flow: [] } as Activity)
 const plan = atom({ plugin: 'cockpit', key: 'plan' } as const, null as Plan | null)
 const working = atom({ plugin: 'cockpit', key: 'working' } as const, false)
+const bg = atom({ plugin: 'cockpit', key: 'bg' } as const, [] as BgTask[])
+const memory = atom({ plugin: 'cockpit', key: 'memory' } as const, { count: 0, recent: [] } as Memory)
+
+/** Across sessions, in the plugin's store: the latest measured steps and finished plans. */
+const SAMPLES = 'samples'
+const PLANS = 'plans'
+const KEEP_SAMPLES = 60
+const KEEP_PLANS = 8
 
 const STATUSES: readonly StepStatus[] = ['pending', 'in_progress', 'completed', 'blocked', 'skipped']
 
 const GUIDE = `## Cockpit — plan d'exécution
 
-L'opérateur suit ton avancement dans un cockpit affiché à côté de la conversation. Dès qu'un travail compte au moins trois étapes ou durera plus de quelques minutes, déclare-le d'abord avec \`mcp__cockpit__plan\` : une étape par jalon vérifiable, chacune avec ton estimation honnête de sa durée en minutes (\`estimate_min\`). Puis signale chaque transition avec \`mcp__cockpit__step\` : \`in_progress\` quand tu attaques l'étape, \`completed\` quand elle est tenue, \`blocked\` quand tu attends l'opérateur, avec une note courte sur ce que tu fais. Si une estimation change nettement en cours de route, renvoie-la. Ces appels ne remplacent pas les comptes rendus à l'opérateur, et un sous-agent ne les fait pas.`
+L'opérateur suit ton avancement dans un cockpit affiché à côté de la conversation. Dès qu'un travail compte au moins trois étapes ou durera plus de quelques minutes, déclare-le d'abord avec \`mcp__cockpit__plan\` : une étape par jalon vérifiable, chacune avec ton estimation honnête de sa durée en minutes (\`estimate_min\`). Puis signale chaque transition avec \`mcp__cockpit__step\` : \`in_progress\` au moment où tu attaques l'étape (une étape close sans avoir été ouverte n'est pas chronométrée), \`completed\` quand elle est tenue, \`blocked\` quand tu attends l'opérateur, avec une note courte sur ce que tu fais. Si une estimation change nettement en cours de route, renvoie-la. Ces appels ne remplacent pas les comptes rendus à l'opérateur, et un sous-agent ne les fait pas.`
 
 // Module variables: what the next tick folds into the state. A reload loses
 // them and the next event refills them; the state itself is the host's.
@@ -28,6 +36,8 @@ let isFast = false
 let n = 0
 let hintMode: string | undefined
 let lastPoll = 0
+/** The context fill that last raised the compaction alert, so it rings once per approach. */
+let compactWarned = false
 
 const POLL_MS = 15_000
 
@@ -42,7 +52,8 @@ async function beat($: EngineInterface) {
   n += isFast ? 1 : 7
   const now = await $.clock.now()
   await $.state.set({ plugin: 'cockpit', key: 'tick' }, { n, now })
-  if (now - lastPoll > POLL_MS) {
+  const renewed = (await read($, activity)).limits?.some(l => l.resetsAt !== undefined && Date.parse(l.resetsAt) <= now && Date.parse(l.resetsAt) > lastPoll)
+  if (now - lastPoll > POLL_MS || renewed) {
     lastPoll = now
     void $.session.usage().then(u => noteUsage($, u)).catch(() => undefined)
   }
@@ -69,11 +80,22 @@ async function noteModel($: EngineInterface, model: string | undefined, effort: 
 }
 
 async function noteUsage($: EngineInterface, u: { context: SessionContextUsage; rateLimits: readonly SessionRateLimit[]; cost?: SessionCost; startedAt?: number }) {
+  const now = await $.clock.now()
   await update($, activity, x => {
     const pct = u.context.percent
     const last = x.history.at(-1)
+    const five = u.rateLimits.find(l => l.kind === 'five_hour')
+    // A window is the one its end names; the reading of that end jitters by seconds.
+    const sameWindow = five?.resetsAt !== undefined && x.trailFor !== undefined && Math.abs(Date.parse(five.resetsAt) - Date.parse(x.trailFor)) < 5 * 60_000
+    const kept = sameWindow ? x.trail ?? [] : []
+    const prev = kept.at(-1)
+    // One reading every two minutes, or as soon as the figure moves: two hours of trail in 120.
+    const isNew = five && (!prev || prev[1] !== five.percentUsed || now - prev[0] >= 2 * 60_000)
+    const trail: [number, number][] = five ? (isNew ? [...kept, [now, five.percentUsed] as [number, number]].slice(-120) : kept) : x.trail ?? []
     return {
       ...x,
+      trail,
+      trailFor: five?.resetsAt ?? x.trailFor,
       contextTokens: u.context.tokens ?? x.contextTokens,
       contextWindow: u.context.window,
       contextPercent: pct ?? x.contextPercent,
@@ -90,7 +112,7 @@ async function noteParts($: EngineInterface) {
   const { context } = await $.session.usage({ breakdown: 'summary' })
   const b = context.breakdown
   if (!b) return
-  const parts: ContextParts = { system: 0, tools: 0, messages: 0, buffer: 0, max: b.rawMaxTokens || b.maxTokens }
+  const parts: ContextParts = { system: 0, tools: 0, messages: 0, buffer: 0, max: b.rawMaxTokens || b.maxTokens, compactAt: b.isAutoCompactEnabled ? b.autoCompactThreshold : undefined }
   for (const c of b.categories) {
     if (c.kind === 'free' || c.kind === 'deferred') continue
     if (c.kind === 'buffer') parts.buffer += c.tokens
@@ -116,6 +138,72 @@ async function noteStep($: EngineInterface, usage: { input_tokens: number; outpu
       flow: [...(x.flow ?? []), usage.output_tokens].slice(-40),
     }
   })
+  await warnCompaction($, tokens)
+}
+
+/** Rings once when the window comes within a tenth of the compaction threshold. */
+async function warnCompaction($: EngineInterface, tokens: number) {
+  const p = (await read($, activity)).parts
+  const at = p?.compactAt ?? (p && p.buffer > 0 ? p.max - p.buffer : undefined)
+  if (!at) return
+  const isNear = tokens >= at * 0.9
+  if (isNear && !compactWarned) {
+    compactWarned = true
+    $.ui.toast(`Cockpit : contexte à ${Math.round((tokens / at) * 100)} % du seuil de compaction`)
+  }
+  if (!isNear) compactWarned = false
+}
+
+// ── The plan's consequences: what it teaches, what it rings ──────────────
+
+async function loadMemory($: EngineInterface) {
+  const samples = ((await $.store.get(SAMPLES)) ?? []) as [number, number][]
+  const recent = ((await $.store.get(PLANS)) ?? []) as PlanSummary[]
+  await $.state.set({ plugin: 'cockpit', key: 'memory' }, { ratio: ratioOf(samples), count: samples.length, recent })
+}
+
+/** Writes the plan, then learns from the steps it closed and rings for what needs the operator. */
+async function savePlan($: EngineInterface, prev: Plan | null, next: Plan | null) {
+  await $.state.set({ plugin: 'cockpit', key: 'plan' }, next)
+  if (!next) return
+  const now = await $.clock.now()
+  const fresh = measured(prev, next)
+  if (fresh.length > 0) {
+    const samples = [...(((await $.store.get(SAMPLES)) ?? []) as [number, number][]), ...fresh].slice(-KEEP_SAMPLES)
+    await $.store.set(SAMPLES, samples)
+  }
+  if (next.finishedAt !== undefined && prev?.finishedAt === undefined) {
+    const summary = summarize(next, now)
+    const plans = [summary, ...(((await $.store.get(PLANS)) ?? []) as PlanSummary[])].slice(0, KEEP_PLANS)
+    await $.store.set(PLANS, plans)
+    void notify($, `Plan « ${next.title} » terminé en ${fmtDur(summary.realMs)}`)
+  }
+  if (fresh.length > 0 || next.finishedAt !== undefined) await loadMemory($)
+  next.steps.forEach(s => {
+    const was = prev?.steps.find(p => p.id === s.id)
+    if (s.status === 'blocked' && was?.status !== 'blocked') void notify($, `Étape ${s.id} bloquée : ${s.note ?? s.title}`)
+  })
+}
+
+async function notify($: EngineInterface, text: string) {
+  $.ui.toast(text)
+  await $.ui.notify(text, { title: 'Cockpit' }).catch(() => undefined)
+}
+
+// ── Work left running ───────────────────────────────────────────────────
+
+function kindOf(type: string): BgTask['kind'] {
+  if (type === 'shell') return 'shell'
+  return type === 'subagent' ? 'agent' : 'other'
+}
+
+async function addBg($: EngineInterface, task: Omit<BgTask, 'startedAt'>) {
+  const now = await $.clock.now()
+  await update($, bg, xs => (xs.some(x => x.id === task.id) ? xs : [...xs, { ...task, startedAt: now }]))
+}
+
+async function dropBg($: EngineInterface, id: string) {
+  await update($, bg, xs => xs.filter(x => x.id !== id))
 }
 
 async function refresh($: EngineInterface) {
@@ -198,6 +286,7 @@ export const register: Register = on => {
       isDeferred: false,
     })
     await refresh($).catch(() => undefined)
+    await loadMemory($).catch(() => undefined)
     startTimer($, false)
     void openPane($)
     return next(e)
@@ -221,7 +310,9 @@ export const register: Register = on => {
   // ── What the model is told ────────────────────────────────────────────
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
-    return { sections: [...composed.sections, { id: 'cockpit:plan', text: GUIDE, scope: 'session' as const }] }
+    const m = await read($, memory)
+    const lesson = m.ratio === undefined ? '' : `\n\nTes estimations passées, mesurées par le cockpit sur ${m.count} étapes : le temps réel vaut ${fmtRatio(m.ratio)} ton estimation. Corrige tes nouvelles estimations en conséquence.`
+    return { sections: [...composed.sections, { id: 'cockpit:plan', text: GUIDE + lesson, scope: 'session' as const }] }
   })
 
   // ── The activity ──────────────────────────────────────────────────────
@@ -288,7 +379,7 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const prev = await read($, plan)
     const next = setPlan(prev, input, now)
-    await $.state.set({ plugin: 'cockpit', key: 'plan' }, next)
+    await savePlan($, prev, next)
     const total = next.steps.reduce((sum, s) => sum + (s.estimateMin ?? 0), 0)
     return { result: `Plan « ${next.title} » affiché : ${next.steps.length} étapes, ~${total} min estimées. Signale chaque transition avec mcp__cockpit__step.` }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'cockpit : le suivi du plan a échoué.' }))
@@ -301,7 +392,7 @@ export const register: Register = on => {
     if (!status || !current.steps[index]) return { deny: `cockpit : étape ${String(e.step)} ou statut ${String(e.status)} inconnu (1 à ${current.steps.length}).` }
     const now = await $.clock.now()
     const moved = moveStep(current, index, status, now, { note: asText(e.note), estimateMin: asMinutes(e.estimate_min) })
-    await $.state.set({ plugin: 'cockpit', key: 'plan' }, moved)
+    await savePlan($, current, moved)
     return { result: `Étape ${index + 1} : ${status}.` }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'cockpit : le suivi du plan a échoué.' }))
 
@@ -311,7 +402,7 @@ export const register: Register = on => {
     if (ran.deny === undefined && !ran.isError) {
       const now = await $.clock.now()
       const prev = await read($, plan)
-      if (prev?.source !== 'cockpit') await $.state.set({ plugin: 'cockpit', key: 'plan' }, fromTodos(prev, e.todos, now))
+      if (prev?.source !== 'cockpit') await savePlan($, prev, fromTodos(prev, e.todos, now))
     }
     return ran
   }).catch(($, e, next) => next(e))
@@ -346,16 +437,52 @@ export const register: Register = on => {
             moved = { ...moved, steps: moved.steps.map((s, i) => (i === index ? { ...s, title: e.subject ?? s.title, estimateMin: est ?? s.estimateMin } : s)) }
           }
         }
-        await $.state.set({ plugin: 'cockpit', key: 'plan' }, moved)
+        await savePlan($, prev, moved)
       }
     }
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  // ── Work left running ─────────────────────────────────────────────────
+  // The turn's end lists it whole; between two, a spawn adds and a subagent's end removes.
+  on('classic.Stop', async ($, e, next) => {
+    const now = await $.clock.now()
+    const listed = e.background_tasks ?? []
+    await update($, bg, xs => listed.map(t => {
+      const known = xs.find(x => x.id === t.id)
+      return known ?? { id: t.id, kind: kindOf(t.type), label: t.description || t.command || t.agent_type || t.name || t.type, startedAt: now }
+    }))
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('classic.SubagentStart', async ($, e, next) => {
+    await addBg($, { id: e.agent_id, kind: 'agent', label: e.agent_type })
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('classic.SubagentStop', async ($, e, next) => {
+    await dropBg($, e.agent_id)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const ran = await next(e)
+    const id = ran.deny === undefined && !ran.isError ? ran.result?.backgroundTaskId : undefined
+    if (id) await addBg($, { id, kind: 'shell', label: e.description ?? e.command })
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  on('tool.call', { tool: 'TaskStop' }, async ($, e, next) => {
+    const ran = await next(e)
+    const id = (e as { task_id?: unknown; shell_id?: unknown }).task_id ?? (e as { shell_id?: unknown }).shell_id
+    if (ran.deny === undefined && typeof id === 'string') await dropBg($, id)
     return ran
   }).catch(($, e, next) => next(e))
 
   // ── The drawing ───────────────────────────────────────────────────────
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const E = $.ui.resolve(e)
-    const [t, stored, p, w] = await Promise.all([read($, tick), read($, activity), read($, plan), read($, working)])
+    const [t, stored, p, w, tasks, m] = await Promise.all([read($, tick), read($, activity), read($, plan), read($, working), read($, bg), read($, memory)])
     // Un état conservé par une version antérieure du mod peut manquer d'un champ né depuis.
     const a: Activity = { ...stored, limits: stored.limits ?? [], history: stored.history ?? [], flow: stored.flow ?? [] }
     const d = {
@@ -365,6 +492,8 @@ export const register: Register = on => {
       n: t.n,
       now: t.now || (await $.clock.now()),
       working: w,
+      bg: tasks ?? [],
+      memory: m ?? { count: 0, recent: [] },
       tz: a.tzOffsetMin ?? 0,
       cols: e.props.bodyColumns,
       rows: e.props.scroll.bodyRows,

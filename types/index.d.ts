@@ -7,6 +7,8 @@ export type Step = {
   estimateMin?: number
   startedAt?: number
   endedAt?: number
+  /** Closed without ever being opened: its start is a guess, its time not measured. */
+  untimed?: true
   note?: string
   /** The notes it had before this one, oldest first: the step's sub-steps. */
   done?: string[]
@@ -18,6 +20,8 @@ export type Plan = {
   title: string
   source: PlanSource
   createdAt: number
+  /** When its last step closed; cleared when a step reopens. */
+  finishedAt?: number
   steps: Step[]
 }
 
@@ -41,9 +45,34 @@ export type Activity = {
   parts?: ContextParts
   /** Minutes east of UTC, as the host's `date +%z` says. */
   tzOffsetMin?: number
+  /** The 5-hour window's readings `[at, percent]`, for the window `trailFor` ends. */
+  trail?: [number, number][]
+  trailFor?: string
 }
 
-export type ContextParts = { system: number; tools: number; messages: number; buffer: number; max: number }
+export type ContextParts = {
+  system: number
+  tools: number
+  messages: number
+  buffer: number
+  max: number
+  /** The token count at which auto-compaction runs; absent when it is off. */
+  compactAt?: number
+}
+
+/** Work the session left running: a shell, a subagent, a monitor. */
+export type BgTask = { id: string; kind: 'shell' | 'agent' | 'other'; label: string; startedAt: number }
+
+/** A finished plan, as the history keeps it across sessions. */
+export type PlanSummary = { title: string; finishedAt: number; steps: number; estimateMin: number; realMs: number }
+
+/** What earlier sessions taught: Claude's estimates against the clock. */
+export type Memory = {
+  /** Real time over estimated, over the latest measured steps; absent below five. */
+  ratio?: number
+  count: number
+  recent: PlanSummary[]
+}
 
 export type Tick = { n: number; now: number }
 
@@ -54,6 +83,8 @@ declare module 'claude-code' {
       activity: Activity
       plan: Plan | null
       working: boolean
+      bg: BgTask[]
+      memory: Memory
     }
   }
 }
