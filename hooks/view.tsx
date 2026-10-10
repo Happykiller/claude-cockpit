@@ -34,6 +34,9 @@ const FA = 'ansi256(8)'
 const WH = 'ansi256(15)'
 const TRACK = 'ansi256(8)'
 const EMPTY = '░'
+// The engine tints its pane gray; the terminal's palette black (its ground in
+// the person's theme) gives the body back the transcript's own background.
+const GROUND = 'ansi256(0)'
 
 /** Cells kept clear on each side of the panel's body. */
 const PAD_X = 2
@@ -313,7 +316,7 @@ export function Dock({ E, d }: { E: Els; d: ViewData }) {
   const a = d.activity
   const live = d.working ? (d.n % 8 < 4 ? ACC : DM) : DM
   return (
-    <Box flexDirection="column" minHeight={Math.max(1, d.rows)} paddingX={PAD_X} paddingTop={1}>
+    <Box flexDirection="column" minHeight={Math.max(1, d.rows)} paddingX={PAD_X} paddingTop={1} backgroundColor={GROUND}>
       <Box justifyContent="space-between" marginBottom={1}>
         <Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text>
         <Box flexShrink={0}><Text><Text color={DM}>{fmtClock(d.now, d.tz, true)}  </Text><Text color={live}>●</Text><Text bold color={d.working ? ACC : DM}>{d.working ? ' LIVE' : ' VEILLE'}</Text></Text></Box>
@@ -430,7 +433,7 @@ export function Band({ E, d }: { E: Els; d: ViewData }) {
   const colW = Math.floor((W - 6) / 3)
   const live = d.working ? (d.n % 8 < 4 ? ACC : DM) : DM
   return (
-    <Box flexDirection="column" gap={1} paddingX={PAD_X}>
+    <Box flexDirection="column" gap={1} paddingX={PAD_X} backgroundColor={GROUND}>
       <Box justifyContent="space-between">
         <Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text>
         <Box flexShrink={0}>
