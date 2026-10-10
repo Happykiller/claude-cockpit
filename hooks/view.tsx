@@ -21,17 +21,19 @@ export type ViewData = {
   rows: number
 }
 
-// The person's theme, never raw colors: Claude's own accent leads, the
-// semantic keys say healthy / attention / past due, and no cell is painted
-// a background a 256-color terminal would round to a loud blue.
-const ACC = 'claude'
-const OK = 'success'
-const WARN = 'warning'
-const HOT = 'error'
+// The terminal's own sixteen colors (`ansi256(0..15)`: 4 blue, 6 cyan, 8
+// dark gray, +8 bright), so its theme paints them: the mockup's blue leads, the semantic hues say healthy / attention /
+// past due, and an empty track is a light shade, never a solid gray block.
+const ACC = 'ansi256(14)'
+const ACC2 = 'ansi256(4)'
+const OK = 'ansi256(2)'
+const WARN = 'ansi256(3)'
+const HOT = 'ansi256(9)'
 const DM = 'inactive'
-const FA = 'subtle'
-const WH = 'text'
-const TRACK = 'subtle'
+const FA = 'ansi256(8)'
+const WH = 'ansi256(15)'
+const TRACK = 'ansi256(8)'
+const EMPTY = '░'
 
 /** Cells kept clear on each side of the panel's body. */
 const PAD_X = 2
@@ -40,10 +42,10 @@ const TONE = { ok: ACC, warn: WARN, hot: HOT } as const
 
 const MODES: Record<string, { label: string; color: string; isSolid?: boolean }> = {
   default: { label: 'default', color: DM },
-  acceptEdits: { label: '⏵⏵ accept edits', color: 'autoAccept', isSolid: true },
-  plan: { label: '⏸ plan', color: 'planMode', isSolid: true },
+  acceptEdits: { label: '⏵⏵ accept edits', color: 'ansi256(13)', isSolid: true },
+  plan: { label: '⏸ plan', color: 'ansi256(12)', isSolid: true },
   auto: { label: '⏵⏵ auto', color: WARN, isSolid: true },
-  dontAsk: { label: "don't ask", color: 'permission' },
+  dontAsk: { label: "don't ask", color: ACC2 },
   bypassPermissions: { label: '⚠ bypass', color: HOT, isSolid: true },
 }
 
@@ -97,7 +99,7 @@ function Bar({ T, pct, width, color }: { T: T; pct: number; width: number; color
     <T wrap="truncate-end">
       <T color={color}>{whole}</T>
       {part && <T color={color}>{part}</T>}
-      <T color={TRACK}>{'█'.repeat(b.empty.length)}</T>
+      <T color={TRACK}>{EMPTY.repeat(b.empty.length)}</T>
     </T>
   )
 }
@@ -154,11 +156,11 @@ function Context({ E, d, width }: { E: Els; d: ViewData; width: number }) {
     <Box flexDirection="column">
       {head}
       <Text wrap="truncate-end">
-        <Text color={DM}>{'█'.repeat(sys)}</Text><Text color={DM}>{'▓'.repeat(tools)}</Text><Text color={color}>{'█'.repeat(msgs)}</Text>
-        <Text color={TRACK}>{'█'.repeat(free)}</Text><Text color={WARN} dimColor>{'▒'.repeat(buf)}</Text>
+        <Text color={ACC2}>{'█'.repeat(sys)}</Text><Text color={ACC2}>{'▓'.repeat(tools)}</Text><Text color={color}>{'█'.repeat(msgs)}</Text>
+        <Text color={TRACK}>{EMPTY.repeat(free)}</Text><Text color={WARN} dimColor>{'▒'.repeat(buf)}</Text>
       </Text>
       <Text wrap="truncate-end">
-        <Text color={DM}>█ système {share(p.system)}  ▓ outils {share(p.tools)}  </Text>
+        <Text color={ACC2}>█</Text><Text color={DM}> système {share(p.system)}  </Text><Text color={ACC2}>▓</Text><Text color={DM}> outils {share(p.tools)}  </Text>
         <Text color={color}>█</Text><Text color={DM}> messages {share(p.messages)}  </Text>
         <Text color={WARN} dimColor>▒</Text><Text color={DM}> réserve</Text>
       </Text>
