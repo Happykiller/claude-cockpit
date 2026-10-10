@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Activity, Plan, StepStatus } from '../types'
+import type { Activity, ContextParts, Plan, StepStatus } from '../types'
 import { addTask, fromTodos, modeFromHint, moveStep, setPlan } from './model'
 import type { PlanInput } from './model'
 import { Band, Dock } from './view'
@@ -11,7 +11,7 @@ const FAST_MS = 140
 const IDLE_MS = 1000
 
 const tick = atom({ plugin: 'cockpit', key: 'tick' } as const, { n: 0, now: 0 })
-const activity = atom({ plugin: 'cockpit', key: 'activity' } as const, { limits: [], history: [] } as Activity)
+const activity = atom({ plugin: 'cockpit', key: 'activity' } as const, { limits: [], history: [], flow: [] } as Activity)
 const plan = atom({ plugin: 'cockpit', key: 'plan' } as const, null as Plan | null)
 const working = atom({ plugin: 'cockpit', key: 'working' } as const, false)
 
@@ -27,6 +27,9 @@ let timer: { cancel: () => void } | undefined
 let isFast = false
 let n = 0
 let hintMode: string | undefined
+let lastPoll = 0
+
+const POLL_MS = 15_000
 
 function startTimer($: EngineInterface, fast: boolean) {
   if (timer && fast === isFast) return
@@ -39,6 +42,10 @@ async function beat($: EngineInterface) {
   n += isFast ? 1 : 7
   const now = await $.clock.now()
   await $.state.set({ plugin: 'cockpit', key: 'tick' }, { n, now })
+  if (now - lastPoll > POLL_MS) {
+    lastPoll = now
+    void $.session.usage().then(u => noteUsage($, u)).catch(() => undefined)
+  }
   const seen = hintMode
   if (seen !== undefined) {
     const a = await read($, activity)
@@ -78,6 +85,38 @@ async function noteUsage($: EngineInterface, u: { context: SessionContextUsage; 
   })
 }
 
+/** The window by category, as /context estimates it locally (no request sent). */
+async function noteParts($: EngineInterface) {
+  const { context } = await $.session.usage({ breakdown: 'summary' })
+  const b = context.breakdown
+  if (!b) return
+  const parts: ContextParts = { system: 0, tools: 0, messages: 0, buffer: 0, max: b.rawMaxTokens || b.maxTokens }
+  for (const c of b.categories) {
+    if (c.kind === 'free' || c.kind === 'deferred') continue
+    if (c.kind === 'buffer') parts.buffer += c.tokens
+    else if (/message/i.test(c.name)) parts.messages += c.tokens
+    else if (/tool/i.test(c.name)) parts.tools += c.tokens
+    else parts.system += c.tokens
+  }
+  await update($, activity, x => ({ ...x, parts }))
+}
+
+/** One main-loop request answered: its context fill and its output, at once. */
+async function noteStep($: EngineInterface, usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }) {
+  const tokens = usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens
+  await update($, activity, x => {
+    const window = x.contextWindow
+    const pct = window ? Math.round((tokens / window) * 100) : x.contextPercent
+    return {
+      ...x,
+      contextTokens: tokens,
+      contextPercent: pct,
+      history: pct !== undefined && pct !== x.history.at(-1) ? [...x.history, pct].slice(-60) : x.history,
+      flow: [...x.flow, usage.output_tokens].slice(-40),
+    }
+  })
+}
+
 async function refresh($: EngineInterface) {
   const [usage, model, settings, tz] = await Promise.all([
     $.session.usage(),
@@ -86,6 +125,7 @@ async function refresh($: EngineInterface) {
     $.process.run(['date', '+%z'], { timeoutMs: 2000 }).catch(() => undefined),
   ])
   await noteUsage($, usage)
+  void noteParts($)
   const effort = typeof settings.effortLevel === 'string' ? settings.effortLevel : undefined
   const a = await read($, activity)
   await noteModel($, model, a.effort ?? effort)
@@ -191,7 +231,9 @@ export const register: Register = on => {
 
   on('turn.step', async function* ($, e, next) {
     if (e.agentId === undefined) void noteModel($, e.model, e.effort)
-    return yield* next(e)
+    const answered = yield* next(e)
+    if (e.agentId === undefined && answered.usage) void noteStep($, answered.usage).catch(() => undefined)
+    return answered
   })
 
   on('turn.start', async ($, e, next) => {
@@ -322,6 +364,7 @@ export const register: Register = on => {
       working: w,
       tz: a.tzOffsetMin ?? 0,
       cols: e.props.bodyColumns,
+      rows: e.props.scroll.bodyRows,
     }
     return e.props.placement === 'dock' ? <Dock E={E} d={d} /> : <Band E={E} d={d} />
   })

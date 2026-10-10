@@ -162,7 +162,10 @@ export function moveStep(plan: Plan, index: number, status: StepStatus, now: num
   }
   if (status === 'blocked') step.startedAt ??= now
   step.status = status
-  if (extra.note !== undefined) step.note = extra.note
+  if (extra.note !== undefined && extra.note !== step.note) {
+    if (step.note) step.done = [...(step.done ?? []), step.note].slice(-4)
+    step.note = extra.note
+  }
   if (extra.estimateMin !== undefined) step.estimateMin = extra.estimateMin
   return { ...plan, steps }
 }

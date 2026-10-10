@@ -8,6 +8,8 @@ export type Step = {
   startedAt?: number
   endedAt?: number
   note?: string
+  /** The notes it had before this one, oldest first: the step's sub-steps. */
+  done?: string[]
 }
 
 export type PlanSource = 'cockpit' | 'todo' | 'tasks'
@@ -33,9 +35,15 @@ export type Activity = {
   startedAt?: number
   /** The context window's fill, one reading per measure, newest last. */
   history: number[]
+  /** Output tokens of each main-loop request, newest last. */
+  flow: number[]
+  /** The window by category, as /context estimates it. */
+  parts?: ContextParts
   /** Minutes east of UTC, as the host's `date +%z` says. */
   tzOffsetMin?: number
 }
+
+export type ContextParts = { system: number; tools: number; messages: number; buffer: number; max: number }
 
 export type Tick = { n: number; now: number }
 

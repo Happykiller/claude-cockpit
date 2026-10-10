@@ -40,6 +40,9 @@ test('la frise mesure le passé et estime le reste', async () => {
   expect(t.remainingMs).toBe(30 * MIN)
   expect(t.hasUnknown).toBe(false)
   expect(plan.steps[1]!.note).toBe('écrit le test')
+  plan = moveStep(plan, 1, 'in_progress', T0 + 36 * MIN, { note: 'le relit' })
+  expect(plan.steps[1]!.done).toEqual(['écrit le test'])
+  expect(plan.steps[1]!.startedAt).toBe(T0 + 25 * MIN)
 })
 
 test('une étape terminée sans avoir été ouverte part de la fin de la précédente', async () => {
@@ -81,14 +84,16 @@ test('les outils du cockpit tiennent le plan, et les deux placements le dessinen
   await $.tool.call({ tool: 'mcp__cockpit__step', step: 1, status: 'completed' })
   await clock.advance(5 * MIN)
   await $.tool.call({ tool: 'mcp__cockpit__step', step: 2, status: 'in_progress', note: 'épreuve de la rive glissante' })
+  await $.tool.call({ tool: 'mcp__cockpit__step', step: 2, status: 'in_progress', note: 'relecture du lot' })
   const refused = await $.tool.call({ tool: 'mcp__cockpit__step', step: 9, status: 'completed' })
   expect(refused.deny).toContain('étape 9')
 
   const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 50, isFullscreen: true } })
   await dock.drawn()
-  expect(await dock.find({ text: /COCKPIT/ })).toBeDefined()
-  expect(await dock.find({ text: /P09 LE CONSTRUIT/ })).toBeDefined()
+  expect(await dock.find({ text: /C O C K P I T/ })).toBeDefined()
+  expect(await dock.find({ text: /P09 Le construit/ })).toBeDefined()
   expect(await dock.find({ text: /rive glissante/ })).toBeDefined()
+  expect(await dock.find({ text: /relecture du lot/ })).toBeDefined()
   expect(await dock.find({ text: /RESTE/ })).toBeDefined()
   await dock.unmount()
 
