@@ -21,30 +21,30 @@ export type ViewData = {
   rows: number
 }
 
-// The maquette's palette: cyan is healthy, amber is active, coral is past due.
-const CY = '#5CD4F0'
-const AM = '#FFB547'
-const CO = '#FF8A66'
-const DM = '#7D8799'
-const FA = '#3A4356'
-const WH = '#FFFFFF'
-const INK = '#0A0D13'
-const TRACK = '#1C2331'
-const CARD = '#0F141D'
-const CARD_HOT = '#1A160D'
-const TOOLS = '#4F5B70'
-const BUFFER = '#5A4520'
-const SOFT = '#C9D1DD'
+// The person's theme, never raw colors: Claude's own accent leads, the
+// semantic keys say healthy / attention / past due, and no cell is painted
+// a background a 256-color terminal would round to a loud blue.
+const ACC = 'claude'
+const OK = 'success'
+const WARN = 'warning'
+const HOT = 'error'
+const DM = 'inactive'
+const FA = 'subtle'
+const WH = 'text'
+const TRACK = 'subtle'
 
-const TONE = { ok: CY, warn: AM, hot: CO } as const
+/** Cells kept clear on each side of the panel's body. */
+const PAD_X = 2
 
-const MODES: Record<string, { label: string; fg: string; bg?: string }> = {
-  default: { label: 'DEFAULT', fg: DM },
-  acceptEdits: { label: '⏵⏵ ACCEPT EDITS', fg: INK, bg: CY },
-  plan: { label: '⏸ PLAN', fg: CY },
-  auto: { label: '⏵⏵ AUTO', fg: INK, bg: AM },
-  dontAsk: { label: 'DONT ASK', fg: AM },
-  bypassPermissions: { label: '⚠ BYPASS', fg: INK, bg: CO },
+const TONE = { ok: ACC, warn: WARN, hot: HOT } as const
+
+const MODES: Record<string, { label: string; color: string; isSolid?: boolean }> = {
+  default: { label: 'default', color: DM },
+  acceptEdits: { label: '⏵⏵ accept edits', color: 'autoAccept', isSolid: true },
+  plan: { label: '⏸ plan', color: 'planMode', isSolid: true },
+  auto: { label: '⏵⏵ auto', color: WARN, isSolid: true },
+  dontAsk: { label: "don't ask", color: 'permission' },
+  bypassPermissions: { label: '⚠ bypass', color: HOT, isSolid: true },
 }
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -72,13 +72,13 @@ function Heading({ E, title, width, right }: { E: Els; title: string; width: num
 }
 
 function Chip({ T, mode }: { T: T; mode: string | undefined }) {
-  const m = (mode && MODES[mode]) || { label: mode ?? '—', fg: DM }
-  return <T bold color={m.fg} backgroundColor={m.bg}>{` ${m.label} `}</T>
+  const m = (mode && MODES[mode]) || { label: mode ?? '—', color: DM }
+  return <T bold inverse={m.isSolid} color={m.color}>{` ${m.label} `}</T>
 }
 
 function Effort({ T, effort }: { T: T; effort: string | undefined }) {
   const idx = effort ? EFFORTS.indexOf(effort) : -1
-  const lit = (i: number) => (i > idx ? TRACK : i === idx ? (idx === 4 ? CO : AM) : CY)
+  const lit = (i: number) => (i > idx ? TRACK : idx === 4 ? HOT : ACC)
   return (
     <T>
       {EFFORTS.map((_, i) => <T color={lit(i)}>▮</T>)}
@@ -96,7 +96,7 @@ function Bar({ T, pct, width, color }: { T: T; pct: number; width: number; color
   return (
     <T wrap="truncate-end">
       <T color={color}>{whole}</T>
-      {part && <T color={color} backgroundColor={TRACK}>{part}</T>}
+      {part && <T color={color}>{part}</T>}
       <T color={TRACK}>{'█'.repeat(b.empty.length)}</T>
     </T>
   )
@@ -154,14 +154,13 @@ function Context({ E, d, width }: { E: Els; d: ViewData; width: number }) {
     <Box flexDirection="column">
       {head}
       <Text wrap="truncate-end">
-        <Text color={DM}>{'█'.repeat(sys)}</Text><Text color={TOOLS}>{'█'.repeat(tools)}</Text><Text color={color}>{'█'.repeat(msgs)}</Text>
-        <Text color={TRACK}>{'█'.repeat(free)}</Text><Text color={BUFFER}>{'▒'.repeat(buf)}</Text>
+        <Text color={DM}>{'█'.repeat(sys)}</Text><Text color={DM}>{'▓'.repeat(tools)}</Text><Text color={color}>{'█'.repeat(msgs)}</Text>
+        <Text color={TRACK}>{'█'.repeat(free)}</Text><Text color={WARN} dimColor>{'▒'.repeat(buf)}</Text>
       </Text>
       <Text wrap="truncate-end">
-        <Text color={DM}>■ système {share(p.system)}  </Text>
-        <Text color={TOOLS}>■</Text><Text color={DM}> outils {share(p.tools)}  </Text>
-        <Text color={color}>■</Text><Text color={DM}> messages {share(p.messages)}  </Text>
-        <Text color={BUFFER}>▒</Text><Text color={DM}> réserve</Text>
+        <Text color={DM}>█ système {share(p.system)}  ▓ outils {share(p.tools)}  </Text>
+        <Text color={color}>█</Text><Text color={DM}> messages {share(p.messages)}  </Text>
+        <Text color={WARN} dimColor>▒</Text><Text color={DM}> réserve</Text>
       </Text>
     </Box>
   )
@@ -178,7 +177,7 @@ function Flow({ E, d }: { E: Els; d: ViewData }) {
       <Text wrap="truncate-end">
         <Text bold color={DM}>DÉBIT  </Text>
         {line
-          ? <Text><Text color={CY}>{line.slice(0, -1)}</Text><Text bold color={d.working && d.n % 6 < 3 ? AM : CY}>{line.slice(-1)}</Text></Text>
+          ? <Text><Text color={ACC}>{line.slice(0, -1)}</Text><Text bold color={d.working && d.n % 6 < 3 ? WH : ACC}>{line.slice(-1)}</Text></Text>
           : <Text color={FA}>{wave(d.n, 12)}</Text>}
         {lastOut !== undefined && <Text color={DM}>  ↓ {fmtTokens(lastOut)}</Text>}
       </Text>
@@ -197,10 +196,10 @@ function Rail({ T, plan, n, width, current }: { T: T; plan: Plan; n: number; wid
   const parts: RenderChildren[] = []
   plan.steps.forEach((s, i) => {
     if (i > 0) {
-      if (s.status === 'completed' || s.status === 'skipped') parts.push(<T color={CY}>{'━'.repeat(gap)}</T>)
+      if (s.status === 'completed' || s.status === 'skipped') parts.push(<T color={OK}>{'━'.repeat(gap)}</T>)
       else if (i === current) {
         const spark = n % (gap + 3)
-        for (let k = 0; k < gap; k++) parts.push(<T bold={k === spark} color={k === spark ? WH : AM}>━</T>)
+        for (let k = 0; k < gap; k++) parts.push(<T bold={k === spark} color={k === spark ? WH : ACC}>━</T>)
       } else parts.push(<T color={TRACK}>{'━'.repeat(gap)}</T>)
     }
     parts.push(node(T, s, i === current, blink))
@@ -210,11 +209,11 @@ function Rail({ T, plan, n, width, current }: { T: T; plan: Plan; n: number; wid
 
 function node(T: T, s: Step, isCurrent: boolean, blink: boolean) {
   switch (s.status) {
-    case 'completed': return <T bold color={CY}>●</T>
+    case 'completed': return <T bold color={OK}>●</T>
     case 'skipped': return <T color={FA}>⊘</T>
-    case 'blocked': return <T bold color={blink ? CO : WH}>✗</T>
-    case 'in_progress': return <T bold color={blink ? AM : WH}>◉</T>
-    default: return <T color={isCurrent ? AM : DM}>○</T>
+    case 'blocked': return <T bold color={blink ? HOT : WH}>✗</T>
+    case 'in_progress': return <T bold color={blink ? ACC : WH}>◉</T>
+    default: return <T color={isCurrent ? ACC : DM}>○</T>
   }
 }
 
@@ -225,7 +224,7 @@ function StepBar({ T, s, now, n, width }: { T: T; s: Step; now: number; n: numbe
   if (s.estimateMin === undefined) {
     const pos = n % (w + 4)
     const out: RenderChildren[] = []
-    for (let i = 0; i < w; i++) out.push(<T color={i >= pos - 3 && i <= pos ? AM : TRACK}>▰</T>)
+    for (let i = 0; i < w; i++) out.push(<T color={i >= pos - 3 && i <= pos ? ACC : TRACK}>▰</T>)
     return <T wrap="truncate-end">{out}<T color={DM}>  sans estimation</T></T>
   }
   const ratio = el / (s.estimateMin * MIN)
@@ -236,9 +235,9 @@ function StepBar({ T, s, now, n, width }: { T: T; s: Step; now: number; n: numbe
     const b = Math.min(filled, sweep + 1)
     return (
       <T wrap="truncate-end">
-        <T color={AM}>{'▰'.repeat(a)}</T><T bold color={WH}>{'▰'.repeat(b - a)}</T><T color={AM}>{'▰'.repeat(filled - b)}</T>
+        <T color={ACC}>{'▰'.repeat(a)}</T><T bold color={WH}>{'▰'.repeat(b - a)}</T><T color={ACC}>{'▰'.repeat(filled - b)}</T>
         <T color={TRACK}>{'▰'.repeat(w - filled)}</T>
-        <T bold color={AM}>{`  ${Math.min(99, Math.round(ratio * 100))} %`}</T>
+        <T bold color={ACC}>{`  ${Math.min(99, Math.round(ratio * 100))} %`}</T>
       </T>
     )
   }
@@ -251,8 +250,8 @@ function StepBar({ T, s, now, n, width }: { T: T; s: Step; now: number; n: numbe
   }
   return (
     <T wrap="truncate-end">
-      {cells(0, mark, AM)}<T bold color={WH}>│</T>{cells(mark + 1, w, CO)}
-      <T bold color={CO}>{`  +${Math.round((ratio - 1) * 100)} %`}</T>
+      {cells(0, mark, ACC)}<T bold color={WH}>│</T>{cells(mark + 1, w, HOT)}
+      <T bold color={HOT}>{`  +${Math.round((ratio - 1) * 100)} %`}</T>
     </T>
   )
 }
@@ -266,7 +265,7 @@ function stepTime(T: T, s: Step, now: number) {
   const isRunning = s.status === 'in_progress' || s.status === 'blocked'
   return (
     <T>
-      <T bold={isRunning} color={isOver ? CO : isRunning ? AM : WH}>{fmtDur(el)}</T>
+      <T bold={isRunning} color={isOver ? HOT : isRunning ? ACC : WH}>{fmtDur(el)}</T>
       <T color={DM}>{` / ${isRunning ? '~' : ''}${fmtEstimate(s.estimateMin)}`}</T>
     </T>
   )
@@ -274,10 +273,10 @@ function stepTime(T: T, s: Step, now: number) {
 
 function stepIcon(T: T, s: Step, n: number) {
   switch (s.status) {
-    case 'completed': return <T color={CY}>✓</T>
+    case 'completed': return <T color={OK}>✓</T>
     case 'skipped': return <T color={FA}>⊘</T>
-    case 'blocked': return <T bold color={CO}>✗</T>
-    case 'in_progress': return <T bold color={AM}>{SPINNER[n % SPINNER.length]}</T>
+    case 'blocked': return <T bold color={HOT}>✗</T>
+    case 'in_progress': return <T bold color={ACC}>{SPINNER[n % SPINNER.length]}</T>
     default: return <T color={DM}>○</T>
   }
 }
@@ -285,7 +284,7 @@ function stepIcon(T: T, s: Step, n: number) {
 /** One row of the list: what it is on the left, its time on the right, never wrapped. */
 function StepRow({ E, s, d }: { E: Els; s: Step; d: ViewData }) {
   const { Box, Text } = E
-  const tint = s.status === 'pending' ? DM : s.status === 'skipped' ? FA : SOFT
+  const tint = s.status === 'pending' ? DM : s.status === 'skipped' ? FA : WH
   return (
     <Box justifyContent="space-between">
       <Text wrap="truncate-end">{stepIcon(Text, s, d.n)} <Text color={FA}>{s.id.padStart(2)}</Text> <Text color={tint} strikethrough={s.status === 'skipped'}>{s.title}</Text></Text>
@@ -297,7 +296,7 @@ function StepRow({ E, s, d }: { E: Els; s: Step; d: ViewData }) {
 function Tile({ E, label, value, color }: { E: Els; label: string; value: string; color: string }) {
   const { Box, Text } = E
   return (
-    <Box flexGrow={1} flexDirection="column" borderStyle="round" borderColor={FA} backgroundColor={CARD} paddingX={1}>
+    <Box flexGrow={1} flexDirection="column" borderStyle="round" borderColor={FA} paddingX={1}>
       <Text bold color={DM}>{label}</Text>
       <Text bold color={color} wrap="truncate-end">{value}</Text>
     </Box>
@@ -308,25 +307,25 @@ function Tile({ E, label, value, color }: { E: Els; label: string; value: string
 
 export function Dock({ E, d }: { E: Els; d: ViewData }) {
   const { Box, Text } = E
-  const W = Math.max(30, d.cols)
+  const W = Math.max(30, d.cols - 2 * PAD_X)
   const a = d.activity
-  const live = d.working ? (d.n % 8 < 4 ? AM : '#7A5A24') : DM
+  const live = d.working ? (d.n % 8 < 4 ? ACC : DM) : DM
   return (
-    <Box flexDirection="column" minHeight={Math.max(1, d.rows)}>
+    <Box flexDirection="column" minHeight={Math.max(1, d.rows)} paddingX={PAD_X} paddingTop={1}>
       <Box justifyContent="space-between" marginBottom={1}>
-        <Text bold color={CY}>◢◤ {spaced('COCKPIT')}</Text>
-        <Box flexShrink={0}><Text><Text color={DM}>{fmtClock(d.now, d.tz, true)}  </Text><Text color={live}>●</Text><Text bold color={d.working ? AM : DM}>{d.working ? ' LIVE' : ' VEILLE'}</Text></Text></Box>
+        <Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text>
+        <Box flexShrink={0}><Text><Text color={DM}>{fmtClock(d.now, d.tz, true)}  </Text><Text color={live}>●</Text><Text bold color={d.working ? ACC : DM}>{d.working ? ' LIVE' : ' VEILLE'}</Text></Text></Box>
       </Box>
 
       <Heading E={E} title="ACTIVITÉ" width={W} />
       <Box flexDirection="column" gap={1} marginTop={1}>
         <Box gap={1}>
-          <Box flexGrow={1} flexDirection="column" borderStyle="round" borderColor={FA} backgroundColor={CARD} paddingX={1}>
+          <Box flexGrow={1} flexDirection="column" borderStyle="round" borderColor={FA} paddingX={1}>
             <Text bold color={DM}>MODÈLE</Text>
             <Text bold color={WH} wrap="truncate-end">◆ {prettyModel(a.model)}</Text>
             <Text color={DM} wrap="truncate-end">{a.model ?? '—'} · {fmtTokens(a.contextWindow)}</Text>
           </Box>
-          <Box width={19} flexDirection="column" borderStyle="round" borderColor={FA} backgroundColor={CARD} paddingX={1}>
+          <Box width={19} flexDirection="column" borderStyle="round" borderColor={FA} paddingX={1}>
             <Text bold color={DM}>MODE</Text>
             <Chip T={Text} mode={a.mode} />
             <Text color={DM}>shift+tab</Text>
@@ -355,7 +354,7 @@ function Idle({ E, d, W }: { E: Els; d: ViewData; W: number }) {
     <Box flexDirection="column" flexGrow={1}>
       <Heading E={E} title="PLAN" width={W} />
       <Box flexDirection="column" alignItems="center" marginTop={1}>
-        <Text color={CY}>{wave(d.n, Math.min(32, W))}</Text>
+        <Text color={ACC}>{wave(d.n, Math.min(32, W))}</Text>
         <Text color={DM}>la frise apparaît dès que Claude déclare un plan</Text>
       </Box>
     </Box>
@@ -373,14 +372,14 @@ function DockPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
   const allDone = t.done === t.total && t.total > 0
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Heading E={E} title="PLAN" width={W} right={<Text><Text bold color={allDone ? CY : AM}>{t.done}</Text><Text color={DM}> / {t.total}</Text></Text>} />
+      <Heading E={E} title="PLAN" width={W} right={<Text><Text bold color={allDone ? OK : ACC}>{t.done}</Text><Text color={DM}> / {t.total}</Text></Text>} />
       <Box flexDirection="column" marginTop={1} flexGrow={1}>
         <Text bold color={WH} wrap="truncate-end">{plan.title}</Text>
         <Rail T={Text} plan={plan} n={d.n} width={W} current={t.current} />
         <Box flexDirection="column" marginTop={1}>
           {hidden.length > 0 && (
             <Box justifyContent="space-between">
-              <Text color={DM}><Text color={CY}>✓</Text>  … {hidden.length} étapes faites</Text>
+              <Text color={DM}><Text color={ACC}>✓</Text>  … {hidden.length} étapes faites</Text>
               <Box flexShrink={0}><Text color={DM}>{fmtDur(hiddenMs)}</Text></Box>
             </Box>
           )}
@@ -393,8 +392,8 @@ function DockPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
         <Box flexGrow={1} minHeight={1} />
         <Box gap={1}>
           <Tile E={E} label="ÉCOULÉ" value={fmtDur(t.elapsedMs)} color={WH} />
-          <Tile E={E} label="RESTE ≈" value={allDone ? 'fini' : `${fmtDur(t.remainingMs)}${t.hasUnknown ? ' +?' : ''}`} color={AM} />
-          <Tile E={E} label="FIN ≈" value={allDone ? '✓' : fmtClock(d.now + t.remainingMs, d.tz)} color={CY} />
+          <Tile E={E} label="RESTE ≈" value={allDone ? 'fini' : `${fmtDur(t.remainingMs)}${t.hasUnknown ? ' +?' : ''}`} color={ACC} />
+          <Tile E={E} label="FIN ≈" value={allDone ? '✓' : fmtClock(d.now + t.remainingMs, d.tz)} color={ACC} />
         </Box>
       </Box>
     </Box>
@@ -404,18 +403,18 @@ function DockPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
 function Current({ E, d, s, i, W }: { E: Els; d: ViewData; s: Step; i: number; W: number }) {
   const { Box, Text } = E
   const isBlocked = s.status === 'blocked'
-  const frame = isBlocked ? CO : AM
+  const frame = isBlocked ? HOT : ACC
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={frame} backgroundColor={CARD_HOT} paddingX={1} key={`cur-${i}`}>
+    <Box flexDirection="column" borderStyle="round" borderColor={frame} paddingX={1} key={`cur-${i}`}>
       <Box justifyContent="space-between">
         <Text wrap="truncate-end">{stepIcon(Text, s, d.n)} <Text bold color={frame}>{s.id}</Text> <Text bold color={WH}>{s.title}</Text></Text>
         <Box flexShrink={0} marginLeft={1}>{stepTime(Text, s, d.now)}</Box>
       </Box>
       {isBlocked
-        ? <Text bold color={d.n % 8 < 4 ? CO : DM}>⚑ attend une décision de l'opérateur</Text>
+        ? <Text bold color={d.n % 8 < 4 ? HOT : DM}>⚑ attend une décision de l'opérateur</Text>
         : <StepBar T={Text} s={s} now={d.now} n={d.n} width={W - 12} />}
-      {(s.done ?? []).map(note => <Text wrap="truncate-end"><Text color={CY}>✓</Text> <Text color={DM}>{note}</Text></Text>)}
-      {s.note && <Text wrap="truncate-end"><Text bold color={AM}>›</Text> <Text color={WH}>{s.note}</Text></Text>}
+      {(s.done ?? []).map(note => <Text wrap="truncate-end"><Text color={ACC}>✓</Text> <Text color={DM}>{note}</Text></Text>)}
+      {s.note && <Text wrap="truncate-end"><Text bold color={ACC}>›</Text> <Text color={WH}>{s.note}</Text></Text>}
     </Box>
   )
 }
@@ -424,14 +423,14 @@ function Current({ E, d, s, i, W }: { E: Els; d: ViewData; s: Step; i: number; W
 
 export function Band({ E, d }: { E: Els; d: ViewData }) {
   const { Box, Text } = E
-  const W = Math.max(60, d.cols)
+  const W = Math.max(60, d.cols - 2 * PAD_X)
   const a = d.activity
   const colW = Math.floor((W - 6) / 3)
-  const live = d.working ? (d.n % 8 < 4 ? AM : '#7A5A24') : DM
+  const live = d.working ? (d.n % 8 < 4 ? ACC : DM) : DM
   return (
-    <Box flexDirection="column" gap={1}>
+    <Box flexDirection="column" gap={1} paddingX={PAD_X}>
       <Box justifyContent="space-between">
-        <Text bold color={CY}>◢◤ {spaced('COCKPIT')}</Text>
+        <Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text>
         <Box flexShrink={0}>
           <Text>
             <Text bold color={WH}>◆ {prettyModel(a.model)}</Text>
@@ -447,7 +446,7 @@ export function Band({ E, d }: { E: Els; d: ViewData }) {
         <Box width={colW} flexDirection="column"><Context E={E} d={d} width={colW} /></Box>
       </Box>
       {d.plan ? <BandPlan E={E} d={d} plan={d.plan} W={W} /> : (
-        <Text><Text bold color={DM}>{spaced('PLAN')}  </Text><Text color={CY}>{wave(d.n, 24)}</Text><Text color={DM}>  la frise apparaît dès que Claude déclare un plan</Text></Text>
+        <Text><Text bold color={DM}>{spaced('PLAN')}  </Text><Text color={ACC}>{wave(d.n, 24)}</Text><Text color={DM}>  la frise apparaît dès que Claude déclare un plan</Text></Text>
       )}
     </Box>
   )
@@ -464,12 +463,12 @@ function BandPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between">
-        <Text wrap="truncate-end"><Text bold color={DM}>{spaced('PLAN')}  </Text><Text bold color={WH}>{plan.title}  </Text><Text bold color={allDone ? CY : AM}>{t.done}</Text><Text color={DM}>/{t.total}</Text></Text>
+        <Text wrap="truncate-end"><Text bold color={DM}>{spaced('PLAN')}  </Text><Text bold color={WH}>{plan.title}  </Text><Text bold color={allDone ? OK : ACC}>{t.done}</Text><Text color={DM}>/{t.total}</Text></Text>
         <Box flexShrink={0}>
           <Text>
             <Text color={DM}>écoulé </Text><Text bold color={WH}>{fmtDur(t.elapsedMs)}</Text>
-            <Text color={DM}>  ·  reste ≈ </Text><Text bold color={AM}>{allDone ? 'fini' : `${fmtDur(t.remainingMs)}${t.hasUnknown ? ' +?' : ''}`}</Text>
-            <Text color={DM}>  ·  fin ≈ </Text><Text bold color={CY}>{allDone ? '✓' : fmtClock(d.now + t.remainingMs, d.tz)}</Text>
+            <Text color={DM}>  ·  reste ≈ </Text><Text bold color={ACC}>{allDone ? 'fini' : `${fmtDur(t.remainingMs)}${t.hasUnknown ? ' +?' : ''}`}</Text>
+            <Text color={DM}>  ·  fin ≈ </Text><Text bold color={ACC}>{allDone ? '✓' : fmtClock(d.now + t.remainingMs, d.tz)}</Text>
           </Text>
         </Box>
       </Box>
@@ -484,9 +483,9 @@ function BandPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
                   {node(Text, s, isCur, d.n % 6 < 3)}
                   {isCur && s.status === 'in_progress'
                     ? <BandSweep T={Text} s={s} now={d.now} n={d.n} width={fill} />
-                    : <Text color={s.status === 'completed' ? CY : TRACK}>{'━'.repeat(fill)}</Text>}
+                    : <Text color={s.status === 'completed' ? OK : TRACK}>{'━'.repeat(fill)}</Text>}
                 </Text>
-                <Text wrap="truncate-end">{isCur ? stepIcon(Text, s, d.n) : <Text color={FA}>{s.id}</Text>} <Text bold={isCur} color={isCur ? WH : s.status === 'pending' ? DM : SOFT}>{s.title}</Text></Text>
+                <Text wrap="truncate-end">{isCur ? stepIcon(Text, s, d.n) : <Text color={FA}>{s.id}</Text>} <Text bold={isCur} color={isCur ? WH : s.status === 'pending' ? DM : WH}>{s.title}</Text></Text>
                 <Text wrap="truncate-end">{stepTime(Text, s, d.now)}</Text>
               </Box>
             )
@@ -497,9 +496,9 @@ function BandPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
       )}
       {cur && (
         <Text wrap="truncate-end">
-          <Text bold color={cur.status === 'blocked' ? CO : AM}>› </Text>
+          <Text bold color={cur.status === 'blocked' ? HOT : ACC}>› </Text>
           {!isColumns && <Text bold color={WH}>{cur.id} {cur.title}  </Text>}
-          {cur.status === 'blocked' ? <Text bold color={CO}>attend une décision de l'opérateur</Text> : <Text color={WH}>{cur.note ?? ''}</Text>}
+          {cur.status === 'blocked' ? <Text bold color={HOT}>attend une décision de l'opérateur</Text> : <Text color={WH}>{cur.note ?? ''}</Text>}
           {(() => {
             const next = plan.steps.slice(t.current + 1).find(s => s.status === 'pending')
             return next ? <Text color={DM}>{`   ·   ensuite : ${next.title}`}</Text> : null
@@ -514,7 +513,7 @@ function BandSweep({ T, s, now, n, width }: { T: T; s: Step; now: number; n: num
   const ratio = s.estimateMin === undefined ? 0.5 : stepElapsed(s, now) / (s.estimateMin * MIN)
   const filled = Math.max(1, Math.min(width, Math.round(Math.min(1, ratio) * width)))
   const sweep = n % (filled + 6)
-  const base = ratio > 1 ? CO : AM
+  const base = ratio > 1 ? HOT : ACC
   return (
     <T>
       <T color={base}>{'━'.repeat(Math.min(filled, sweep))}</T>

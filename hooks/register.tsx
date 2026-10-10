@@ -112,7 +112,8 @@ async function noteStep($: EngineInterface, usage: { input_tokens: number; outpu
       contextTokens: tokens,
       contextPercent: pct,
       history: pct !== undefined && pct !== x.history.at(-1) ? [...x.history, pct].slice(-60) : x.history,
-      flow: [...x.flow, usage.output_tokens].slice(-40),
+      // `flow` est né avec la refonte de style : un état conservé d'avant ne l'a pas.
+      flow: [...(x.flow ?? []), usage.output_tokens].slice(-40),
     }
   })
 }
@@ -354,7 +355,9 @@ export const register: Register = on => {
   // ── The drawing ───────────────────────────────────────────────────────
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const E = $.ui.resolve(e)
-    const [t, a, p, w] = await Promise.all([read($, tick), read($, activity), read($, plan), read($, working)])
+    const [t, stored, p, w] = await Promise.all([read($, tick), read($, activity), read($, plan), read($, working)])
+    // Un état conservé par une version antérieure du mod peut manquer d'un champ né depuis.
+    const a: Activity = { ...stored, limits: stored.limits ?? [], history: stored.history ?? [], flow: stored.flow ?? [] }
     const d = {
       activity: a,
       history: a.history,
