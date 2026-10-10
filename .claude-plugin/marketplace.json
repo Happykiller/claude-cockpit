@@ -1,0 +1,13 @@
+{
+  "name": "claude-cockpit",
+  "description": "Cockpit: an animated side panel for Claude Code that shows live session activity and the execution plan as a timeline",
+  "owner": {
+    "name": "Happykiller"
+  },
+  "plugins": [
+    {
+      "name": "cockpit",
+      "source": "./"
+    }
+  ]
+}

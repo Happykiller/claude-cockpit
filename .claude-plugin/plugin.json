@@ -1,6 +1,11 @@
 {
   "name": "cockpit",
-  "version": "0.1.0",
-  "description": "Cockpit animé : activité de la session (modèle, effort, mode, limites, contexte) et frise du plan d'exécution",
+  "version": "0.2.0",
+  "description": "Animated cockpit for Claude Code: live session activity (model, effort, mode, limits, context) and a timeline of the execution plan",
+  "author": { "name": "Happykiller" },
+  "homepage": "https://github.com/Happykiller/claude-cockpit",
+  "repository": "https://github.com/Happykiller/claude-cockpit",
+  "license": "MIT",
+  "keywords": ["dashboard", "plan", "timeline", "usage", "rate-limits", "context", "tui"],
   "types": "./types/index.d.ts"
 }

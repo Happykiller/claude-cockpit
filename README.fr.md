@@ -1,0 +1,151 @@
+# Cockpit pour Claude Code
+
+[English](README.md) · **Français**
+
+Un panneau latéral animé pour [Claude Code](https://claude.com/claude-code). Pendant que Claude travaille, il garde deux choses sous les yeux : **ce que la session consomme** et **où en est le plan**.
+
+<p align="center">
+  <img src="docs/cockpit-dock.svg" alt="Le cockpit docké à côté de la conversation Claude Code : jauges d'activité en haut, frise du plan en bas" width="100%">
+</p>
+
+<sub>Maquette animée du panneau, tirée de la disposition du mod. Dans le terminal, le panneau est fait de cellules de caractères et suit le thème de couleurs de ton terminal.</sub>
+
+## Ce qu'il montre
+
+**L'activité, en permanence**
+
+- **Modèle et effort** : `Opus 5.5`, `high / max`, relus à chaque requête.
+- **Mode d'exécution** : `default`, `accept edits`, `plan`, `auto`, `bypass`. Il change dès que tu appuies sur `shift+tab`.
+- **Fenêtre de 5 h** : consommation, heure de renouvellement, et **projection au rythme actuel**. Par exemple : `⚑ au rythme actuel : 100 % avant la fin, vers 14:32`.
+- **Semaine** : consommation et renouvellement.
+- **Contexte** : tokens sur la fenêtre, répartis entre système, outils, messages et réserve de compaction. Un toast prévient quand le contexte atteint 90 % du seuil de compaction automatique.
+- **Débit** : tokens produits par requête, plus la durée de la session et son coût en équivalent API.
+- **En fond** : les commandes et sous-agents encore en cours, chacun avec sa durée.
+
+**Le plan, en frise**
+
+- Claude déclare le plan avec une estimation par étape, puis signale chaque transition. Le cockpit dessine :
+  - un rail de nœuds ;
+  - le temps passé contre l'estimation ;
+  - une barre pour l'étape en cours, qui passe au rouge au-delà de son estimation ;
+  - le reste et l'heure de fin estimés.
+- **Calibrage d'une session à l'autre** : le cockpit garde le temps réel contre l'estimation de chaque étape mesurée. Au bout de cinq étapes, il affiche le rapport (`×1,2`) et une heure de fin réaliste. Il transmet aussi ce rapport à Claude, qui corrige ses estimations suivantes.
+- **Alertes** : une étape bloquée (Claude t'attend) ou un plan fini envoie une notification du terminal et un toast.
+- Dix minutes après la fin d'un plan, le panneau affiche à la place les derniers plans.
+
+**Deux dispositions, au choix de Claude Code**
+
+Dans la disposition plein écran, à partir de 110 colonnes, le cockpit se docke à droite de la conversation. Dans un terminal plus étroit, il devient un bandeau au-dessus du prompt :
+
+<p align="center">
+  <img src="docs/cockpit-band.svg" alt="Le cockpit en bandeau au-dessus du prompt, dans un terminal plus étroit" width="100%">
+</p>
+
+## Installation
+
+Il faut **Claude Code 2.1.275 ou plus récent** : les versions antérieures ne savent pas installer un plugin depuis sa marketplace en une seule étape. Le cockpit a été développé et testé sur la 2.1.296.
+
+Dans une session Claude Code, tape :
+
+```text
+/plugin install cockpit --marketplace Happykiller/claude-cockpit
+```
+
+Réponds `y` pour ajouter la marketplace, puis choisis une portée. **User** rend le cockpit disponible dans tous tes projets. Il est actif tout de suite et s'ouvre de lui-même au début de chaque session.
+
+### Mise en place conseillée
+
+**1. Laisser Claude tenir le plan sans demander.** Le cockpit déclare deux outils, `mcp__cockpit__plan` et `mcp__cockpit__step`. Dans le mode de permission par défaut, Claude Code peut demander ton accord à chaque étape. Pour les autoriser une fois pour toutes, ajoute-les dans `~/.claude/settings.json` :
+
+```json
+{
+  "permissions": {
+    "allow": ["mcp__cockpit__plan", "mcp__cockpit__step"]
+  }
+}
+```
+
+Fusionne-les avec ta liste `allow` existante, sans la remplacer.
+
+**2. Retirer la teinte grise derrière le panneau (facultatif).** Claude Code peint le panneau docké avec son propre gris (`composerSidebarBackground`), qu'aucun plugin ne peut changer. Le plugin livre un thème identique au thème sombre, sauf qu'il garde le fond de ton terminal derrière le cockpit. Choisis **« Dark — untinted side panel »** dans `/theme`.
+
+Si ce thème n'apparaît pas dans `/theme`, installe-le comme thème utilisateur :
+
+```bash
+mkdir -p ~/.claude/themes
+curl -fsSL https://raw.githubusercontent.com/Happykiller/claude-cockpit/master/themes/cockpit-dark.json \
+  -o ~/.claude/themes/cockpit-dark.json
+```
+
+Puis mets `"theme": "custom:cockpit-dark"` dans `~/.claude/settings.json`, ou choisis-le dans `/theme`.
+
+**3. Lui laisser de la place.** La disposition dockée demande la disposition plein écran de Claude Code et au moins 110 colonnes. En dessous, c'est le bandeau.
+
+## Utilisation
+
+Rien à faire : une section du prompt système demande à Claude de déclarer un plan pour toute tâche de trois étapes ou plus, puis de signaler chaque étape au fil de l'eau. Tu peux aussi le lui demander : *« mets le plan dans le cockpit »*.
+
+| Commande | Effet |
+| --- | --- |
+| `/cockpit` | Rouvre le panneau, si tu l'as fermé |
+| `/cockpit reset` | Efface le plan en cours |
+| `/cockpit close` | Ferme le panneau |
+
+Le cockpit suit aussi les listes `TodoWrite` et `TaskCreate` / `TaskUpdate` quand une session s'en sert.
+
+Pour mettre à jour, désactiver ou désinstaller le plugin, passe par le menu `/plugin`.
+
+## Comment ça marche
+
+Le cockpit est un **mod** Claude Code : un module de hooks (`hooks/register.tsx`) que le moteur charge avec le plugin. Il ne lit que ce que le moteur expose aux plugins :
+
+| Affiché | Source |
+| --- | --- |
+| Modèle, effort, contexte de chaque requête | le flux `turn.step` |
+| Limites, renouvellements, coût, répartition du contexte | `session.measure` et `$.session.usage()` |
+| Mode d'exécution | le `permission_mode` des hooks et l'indication du pied du prompt |
+| Travail en fond | `classic.Stop` (`background_tasks`), `SubagentStart` / `SubagentStop`, les `Bash` lancés en fond |
+| Le plan | ses outils `mcp__cockpit__plan` / `mcp__cockpit__step`, plus `TodoWrite` et les outils de tâches |
+
+Le cockpit garde dans le store local du plugin, sous ton dossier de configuration Claude Code :
+- les mesures du calibrage : les 60 dernières étapes mesurées ;
+- les derniers plans finis : les 8 derniers.
+
+**Rien n'est envoyé nulle part.**
+
+## Développer
+
+```bash
+git clone https://github.com/Happykiller/claude-cockpit.git
+claude --plugin-dir ./claude-cockpit
+```
+
+Pour un rechargement à chaud pendant que tu modifies, pointe `CLAUDE_CODE_PLUGIN_DIRS` sur le dossier, par exemple dans le bloc `env` de `~/.claude/settings.json`. Une session interactive recharge alors le mod à chaque enregistrement.
+
+Une fois le mod chargé, le moteur écrit ses définitions de types dans `.claude-plugin/types/`. Elles sont ignorées par git, et `tsconfig.json` s'appuie dessus.
+
+```bash
+npx -y -p typescript@5.6.3 tsc -p .   # contrôle de types
+claude plugin validate .               # manifeste, marketplace, hooks
+claude plugin test .                   # tests/*.test.ts
+python3 docs/make_demo.py              # régénère les maquettes du README
+```
+
+| Chemin | Rôle |
+| --- | --- |
+| `hooks/register.tsx` | les hooks : événements, outils, commande `/cockpit`, état |
+| `hooks/model.ts` | la logique pure : formats, transitions du plan, totaux, projection, calibrage |
+| `hooks/view.tsx` | le dessin : panneau docké et bandeau |
+| `types/index.d.ts` | le contrat d'état (`PluginState`) |
+| `themes/cockpit-dark.json` | le thème sans teinte derrière le panneau |
+| `docs/make_demo.py` | les maquettes SVG animées |
+
+## Limites
+
+- **Liste « EN FOND »** : elle est complète à chaque fin de tour. Entre deux tours, elle ajoute ce qui démarre et retire les sous-agents qui se terminent.
+- **Calibrage** : il démarre à cinq étapes mesurées. Une étape n'est mesurée que si Claude l'a ouverte avant de la clore.
+- **Pas de son** : le moteur n'a pas de lecteur audio dans les terminaux Linux et Windows.
+
+## Licence
+
+[MIT](LICENSE)

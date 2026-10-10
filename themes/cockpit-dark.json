@@ -1,0 +1,7 @@
+{
+  "name": "Dark — untinted side panel",
+  "base": "dark",
+  "overrides": {
+    "composerSidebarBackground": "ansi:black"
+  }
+}
