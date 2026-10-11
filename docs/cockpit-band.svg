@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1109" height="451" viewBox="0 0 1109 451" font-family="'JetBrains Mono','Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="14" role="img" aria-label="Cockpit as a band above the prompt">
+<svg xmlns="http://www.w3.org/2000/svg" width="1109" height="489" viewBox="0 0 1109 489" font-family="'JetBrains Mono','Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="14" role="img" aria-label="Cockpit as a band above the prompt">
 <title>Cockpit as a band above the prompt</title>
 <defs>
   <linearGradient id="shine" x1="0" x2="1" y1="0" y2="0">
@@ -39,7 +39,7 @@
 <text x="67.2" y="58.0" fill="#7D8799">(src/billing/webhooks/router.ts)</text>
 <text x="16.8" y="77.0" fill="#3A4356">  ⎿ </text>
 <text x="50.4" y="77.0" fill="#7D8799">Updated with 38 additions and 21 removals</text>
-<rect x="19.8" y="94.6" width="1069.2" height="286.4" rx="7" fill="none" stroke="#262A33" stroke-width="1.2"/>
+<rect x="19.8" y="94.6" width="1069.2" height="324.4" rx="7" fill="none" stroke="#262A33" stroke-width="1.2"/>
 <text x="33.6" y="115.0" fill="#6FD3D8" font-weight="700">◢◤ C O C K P I T</text>
 <text x="554.4" y="115.0" fill="#F4F1E7" font-weight="700">◆ Opus 5.5</text>
 <text x="638.4" y="115.0" fill="#7D8799">   effort </text>
@@ -101,96 +101,111 @@
 <text x="879.2" y="191.0" fill="#7D8799"> outils 5 %  </text>
 <text x="988.4" y="191.0" fill="#6FD3D8">■</text>
 <text x="996.8" y="191.0" fill="#7D8799"> messages</text>
-<text x="33.6" y="248.0" fill="#7D8799" font-weight="700">E N   F O N D</text>
-<text x="159.6" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.0s">⠋</text>
-<text x="159.6" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.9s">⠙</text>
-<text x="159.6" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.8s">⠹</text>
-<text x="159.6" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.7s">⠸</text>
-<text x="159.6" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.6s">⠼</text>
-<text x="159.6" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.5s">⠴</text>
-<text x="159.6" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.4s">⠦</text>
-<text x="159.6" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.3s">⠧</text>
-<text x="159.6" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.2s">⠇</text>
-<text x="159.6" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.1s">⠏</text>
-<text x="176.4" y="248.0" fill="#F4F1E7">revue du lot</text>
-<text x="277.2" y="248.0" fill="#7D8799"> 12 min</text>
-<text x="336.0" y="248.0" fill="#7D8799">   ·   </text>
-<text x="378.0" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.45s">⠋</text>
-<text x="378.0" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.35s">⠙</text>
-<text x="378.0" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.25s">⠹</text>
-<text x="378.0" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.15s">⠸</text>
-<text x="378.0" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.05s">⠼</text>
-<text x="378.0" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.95s">⠴</text>
-<text x="378.0" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.85s">⠦</text>
-<text x="378.0" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.75s">⠧</text>
-<text x="378.0" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.65s">⠇</text>
-<text x="378.0" y="248.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.55s">⠏</text>
-<text x="394.8" y="248.0" fill="#F4F1E7">npm run test:e2e</text>
-<text x="529.2" y="248.0" fill="#7D8799"> 3 min</text>
-<text x="33.6" y="286.0" fill="#7D8799" font-weight="700">P L A N   </text>
-<text x="117.6" y="286.0" fill="#F4F1E7" font-weight="700">Refonte de l'API de paiement  </text>
-<text x="369.6" y="286.0" fill="#6FD3D8" font-weight="700">3</text>
-<text x="378.0" y="286.0" fill="#7D8799">/7</text>
-<text x="655.2" y="286.0" fill="#7D8799">écoulé </text>
-<text x="714.0" y="286.0" fill="#F4F1E7" font-weight="700">1 h 10</text>
-<text x="764.4" y="286.0" fill="#7D8799">  ·  reste ≈ </text>
-<text x="873.6" y="286.0" fill="#6FD3D8" font-weight="700">46 min</text>
-<text x="924.0" y="286.0" fill="#7D8799">  ·  fin ≈ </text>
-<text x="1016.4" y="286.0" fill="#6FD3D8" font-weight="700">15:58</text>
-<circle cx="37.8" cy="300.5" r="4.4" fill="#8FC7A8"/>
-<line x1="45.36" y1="300.5" x2="171.84" y2="300.5" stroke="#8FC7A8" stroke-width="2.2" stroke-linecap="round"/>
-<text x="33.6" y="324.0" fill="#3A4356">1</text>
-<text x="42.0" y="324.0" fill="#F4F1E7"> Cartographier</text>
-<text x="33.6" y="343.0" fill="#F4F1E7">12 min</text>
-<text x="84.0" y="343.0" fill="#7D8799"> / 15 min</text>
-<circle cx="187.8" cy="300.5" r="4.4" fill="#8FC7A8"/>
-<line x1="195.36" y1="300.5" x2="321.84" y2="300.5" stroke="#8FC7A8" stroke-width="2.2" stroke-linecap="round"/>
-<text x="183.6" y="324.0" fill="#3A4356">2</text>
-<text x="192.0" y="324.0" fill="#F4F1E7"> Tests de con…</text>
-<text x="183.6" y="343.0" fill="#F5837C">31 min</text>
-<text x="234.0" y="343.0" fill="#7D8799"> / 25 min</text>
-<circle cx="337.8" cy="300.5" r="4.4" fill="#8FC7A8"/>
-<line x1="345.36" y1="300.5" x2="471.84" y2="300.5" stroke="#8FC7A8" stroke-width="2.2" stroke-linecap="round"/>
-<text x="333.6" y="324.0" fill="#3A4356">3</text>
-<text x="342.0" y="324.0" fill="#F4F1E7"> Client Stripe</text>
-<text x="333.6" y="343.0" fill="#F4F1E7">18 min</text>
-<text x="384.0" y="343.0" fill="#7D8799"> / 20 min</text>
-<circle cx="487.8" cy="300.5" r="5.6" fill="none" stroke="#6FD3D8" stroke-width="2" class="pulse"/>
-<circle cx="487.8" cy="300.5" r="2.6" fill="#6FD3D8"/>
-<line x1="495.36" y1="300.5" x2="552.28" y2="300.5" stroke="#6FD3D8" stroke-width="2.2" stroke-linecap="round"/>
-<line x1="552.28" y1="300.5" x2="621.84" y2="300.5" stroke="#3A4356" stroke-width="2.2" stroke-linecap="round"/>
-<circle cx="496.2" cy="300.5" r="2.4" fill="#F4F1E7" class="spark" style="--d:56.9px"/>
-<text x="483.6" y="324.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.0s">⠋</text>
-<text x="483.6" y="324.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.9s">⠙</text>
-<text x="483.6" y="324.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.8s">⠹</text>
-<text x="483.6" y="324.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.7s">⠸</text>
-<text x="483.6" y="324.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.6s">⠼</text>
-<text x="483.6" y="324.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.5s">⠴</text>
-<text x="483.6" y="324.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.4s">⠦</text>
-<text x="483.6" y="324.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.3s">⠧</text>
-<text x="483.6" y="324.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.2s">⠇</text>
-<text x="483.6" y="324.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.1s">⠏</text>
-<text x="500.4" y="324.0" fill="#F4F1E7" font-weight="700">Webhooks</text>
-<text x="483.6" y="343.0" fill="#6FD3D8" font-weight="700">9 min</text>
-<text x="525.6" y="343.0" fill="#7D8799"> / ~20 min</text>
-<circle cx="637.8" cy="300.5" r="3.8" fill="none" stroke="#7D8799" stroke-width="1.4"/>
-<line x1="645.36" y1="300.5" x2="771.84" y2="300.5" stroke="#3A4356" stroke-width="2.2" stroke-linecap="round"/>
-<text x="633.6" y="324.0" fill="#3A4356">5</text>
-<text x="642.0" y="324.0" fill="#7D8799"> Paiements de…</text>
-<text x="633.6" y="343.0" fill="#7D8799">~15 min</text>
-<circle cx="787.8" cy="300.5" r="3.8" fill="none" stroke="#7D8799" stroke-width="1.4"/>
-<line x1="795.36" y1="300.5" x2="921.84" y2="300.5" stroke="#3A4356" stroke-width="2.2" stroke-linecap="round"/>
-<text x="783.6" y="324.0" fill="#3A4356">6</text>
-<text x="792.0" y="324.0" fill="#7D8799"> Documentation</text>
-<text x="783.6" y="343.0" fill="#7D8799">~10 min</text>
-<circle cx="937.8" cy="300.5" r="3.8" fill="none" stroke="#7D8799" stroke-width="1.4"/>
-<line x1="945.36" y1="300.5" x2="1071.84" y2="300.5" stroke="#3A4356" stroke-width="2.2" stroke-linecap="round"/>
-<text x="933.6" y="324.0" fill="#3A4356">7</text>
-<text x="942.0" y="324.0" fill="#7D8799"> Relecture</text>
-<text x="933.6" y="343.0" fill="#7D8799">~10 min</text>
-<text x="33.6" y="362.0" fill="#6FD3D8" font-weight="700">› </text>
-<text x="50.4" y="362.0" fill="#F4F1E7">réécrit le routeur des webhooks</text>
-<text x="310.8" y="362.0" fill="#7D8799">   ·   ensuite : Rejouer les paiements de test</text>
-<text x="16.8" y="426.6" fill="#D7DEE9">&gt; </text>
-<rect x="33.6" y="414.88" width="7.56" height="14.82" rx="0" fill="#D7DEE9" class="cursor"/>
+<text x="33.6" y="248.0" fill="#7D8799" font-weight="700">A C T I V I T É   </text>
+<text x="184.8" y="248.0" fill="#F4F1E7" font-weight="700">2 h 14</text>
+<text x="235.2" y="248.0" fill="#7D8799">  ·  </text>
+<text x="277.2" y="248.0" fill="#F6B12A" font-weight="700">≈ 18,40 $ API</text>
+<text x="386.4" y="248.0" fill="#7D8799">  ·  </text>
+<text x="428.4" y="248.0" fill="#6FD3D8" font-weight="700">21.7 M</text>
+<text x="478.8" y="248.0" fill="#7D8799"> tokens  </text>
+<text x="554.4" y="248.0" fill="#6FD3D8">↑</text>
+<text x="562.8" y="248.0" fill="#F4F1E7"> 21.4 M</text>
+<text x="621.6" y="248.0" fill="#F6B12A">  ↓</text>
+<text x="646.8" y="248.0" fill="#F4F1E7"> 286 k</text>
+<text x="697.2" y="248.0" fill="#7D8799">  ·  642 req.</text>
+<text x="814.8" y="248.0" fill="#7D8799">relus du cache </text>
+<text x="940.8" y="248.0" fill="#F4F1E7">92 %</text>
+<text x="974.4" y="248.0" fill="#7D8799"> des envoyés</text>
+<text x="33.6" y="286.0" fill="#7D8799" font-weight="700">E N   F O N D</text>
+<text x="159.6" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.0s">⠋</text>
+<text x="159.6" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.9s">⠙</text>
+<text x="159.6" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.8s">⠹</text>
+<text x="159.6" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.7s">⠸</text>
+<text x="159.6" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.6s">⠼</text>
+<text x="159.6" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.5s">⠴</text>
+<text x="159.6" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.4s">⠦</text>
+<text x="159.6" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.3s">⠧</text>
+<text x="159.6" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.2s">⠇</text>
+<text x="159.6" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.1s">⠏</text>
+<text x="176.4" y="286.0" fill="#F4F1E7">revue du lot</text>
+<text x="277.2" y="286.0" fill="#7D8799"> 12 min</text>
+<text x="336.0" y="286.0" fill="#7D8799">   ·   </text>
+<text x="378.0" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.45s">⠋</text>
+<text x="378.0" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.35s">⠙</text>
+<text x="378.0" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.25s">⠹</text>
+<text x="378.0" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.15s">⠸</text>
+<text x="378.0" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.05s">⠼</text>
+<text x="378.0" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.95s">⠴</text>
+<text x="378.0" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.85s">⠦</text>
+<text x="378.0" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.75s">⠧</text>
+<text x="378.0" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.65s">⠇</text>
+<text x="378.0" y="286.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.55s">⠏</text>
+<text x="394.8" y="286.0" fill="#F4F1E7">npm run test:e2e</text>
+<text x="529.2" y="286.0" fill="#7D8799"> 3 min</text>
+<text x="33.6" y="324.0" fill="#7D8799" font-weight="700">P L A N   </text>
+<text x="117.6" y="324.0" fill="#F4F1E7" font-weight="700">Refonte de l'API de paiement  </text>
+<text x="369.6" y="324.0" fill="#6FD3D8" font-weight="700">3</text>
+<text x="378.0" y="324.0" fill="#7D8799">/7</text>
+<text x="655.2" y="324.0" fill="#7D8799">écoulé </text>
+<text x="714.0" y="324.0" fill="#F4F1E7" font-weight="700">1 h 10</text>
+<text x="764.4" y="324.0" fill="#7D8799">  ·  reste ≈ </text>
+<text x="873.6" y="324.0" fill="#6FD3D8" font-weight="700">46 min</text>
+<text x="924.0" y="324.0" fill="#7D8799">  ·  fin ≈ </text>
+<text x="1016.4" y="324.0" fill="#6FD3D8" font-weight="700">15:31</text>
+<circle cx="37.8" cy="338.5" r="4.4" fill="#8FC7A8"/>
+<line x1="45.36" y1="338.5" x2="171.84" y2="338.5" stroke="#8FC7A8" stroke-width="2.2" stroke-linecap="round"/>
+<text x="33.6" y="362.0" fill="#3A4356">1</text>
+<text x="42.0" y="362.0" fill="#F4F1E7"> Cartographier</text>
+<text x="33.6" y="381.0" fill="#F4F1E7">12 min</text>
+<text x="84.0" y="381.0" fill="#7D8799"> / 15 min</text>
+<circle cx="187.8" cy="338.5" r="4.4" fill="#8FC7A8"/>
+<line x1="195.36" y1="338.5" x2="321.84" y2="338.5" stroke="#8FC7A8" stroke-width="2.2" stroke-linecap="round"/>
+<text x="183.6" y="362.0" fill="#3A4356">2</text>
+<text x="192.0" y="362.0" fill="#F4F1E7"> Tests de con…</text>
+<text x="183.6" y="381.0" fill="#F5837C">31 min</text>
+<text x="234.0" y="381.0" fill="#7D8799"> / 25 min</text>
+<circle cx="337.8" cy="338.5" r="4.4" fill="#8FC7A8"/>
+<line x1="345.36" y1="338.5" x2="471.84" y2="338.5" stroke="#8FC7A8" stroke-width="2.2" stroke-linecap="round"/>
+<text x="333.6" y="362.0" fill="#3A4356">3</text>
+<text x="342.0" y="362.0" fill="#F4F1E7"> Client Stripe</text>
+<text x="333.6" y="381.0" fill="#F4F1E7">18 min</text>
+<text x="384.0" y="381.0" fill="#7D8799"> / 20 min</text>
+<circle cx="487.8" cy="338.5" r="5.6" fill="none" stroke="#6FD3D8" stroke-width="2" class="pulse"/>
+<circle cx="487.8" cy="338.5" r="2.6" fill="#6FD3D8"/>
+<line x1="495.36" y1="338.5" x2="552.28" y2="338.5" stroke="#6FD3D8" stroke-width="2.2" stroke-linecap="round"/>
+<line x1="552.28" y1="338.5" x2="621.84" y2="338.5" stroke="#3A4356" stroke-width="2.2" stroke-linecap="round"/>
+<circle cx="496.2" cy="338.5" r="2.4" fill="#F4F1E7" class="spark" style="--d:56.9px"/>
+<text x="483.6" y="362.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-1.0s">⠋</text>
+<text x="483.6" y="362.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.9s">⠙</text>
+<text x="483.6" y="362.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.8s">⠹</text>
+<text x="483.6" y="362.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.7s">⠸</text>
+<text x="483.6" y="362.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.6s">⠼</text>
+<text x="483.6" y="362.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.5s">⠴</text>
+<text x="483.6" y="362.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.4s">⠦</text>
+<text x="483.6" y="362.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.3s">⠧</text>
+<text x="483.6" y="362.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.2s">⠇</text>
+<text x="483.6" y="362.0" fill="#6FD3D8" font-weight="700" class="frame" style="animation-duration:1.0s;animation-delay:-0.1s">⠏</text>
+<text x="500.4" y="362.0" fill="#F4F1E7" font-weight="700">Webhooks</text>
+<text x="483.6" y="381.0" fill="#6FD3D8" font-weight="700">9 min</text>
+<text x="525.6" y="381.0" fill="#7D8799"> / ~20 min</text>
+<circle cx="637.8" cy="338.5" r="3.8" fill="none" stroke="#7D8799" stroke-width="1.4"/>
+<line x1="645.36" y1="338.5" x2="771.84" y2="338.5" stroke="#3A4356" stroke-width="2.2" stroke-linecap="round"/>
+<text x="633.6" y="362.0" fill="#3A4356">5</text>
+<text x="642.0" y="362.0" fill="#7D8799"> Paiements de…</text>
+<text x="633.6" y="381.0" fill="#7D8799">~15 min</text>
+<circle cx="787.8" cy="338.5" r="3.8" fill="none" stroke="#7D8799" stroke-width="1.4"/>
+<line x1="795.36" y1="338.5" x2="921.84" y2="338.5" stroke="#3A4356" stroke-width="2.2" stroke-linecap="round"/>
+<text x="783.6" y="362.0" fill="#3A4356">6</text>
+<text x="792.0" y="362.0" fill="#7D8799"> Documentation</text>
+<text x="783.6" y="381.0" fill="#7D8799">~10 min</text>
+<circle cx="937.8" cy="338.5" r="3.8" fill="none" stroke="#7D8799" stroke-width="1.4"/>
+<line x1="945.36" y1="338.5" x2="1071.84" y2="338.5" stroke="#3A4356" stroke-width="2.2" stroke-linecap="round"/>
+<text x="933.6" y="362.0" fill="#3A4356">7</text>
+<text x="942.0" y="362.0" fill="#7D8799"> Relecture</text>
+<text x="933.6" y="381.0" fill="#7D8799">~10 min</text>
+<text x="33.6" y="400.0" fill="#6FD3D8" font-weight="700">› </text>
+<text x="50.4" y="400.0" fill="#F4F1E7">réécrit le routeur des webhooks</text>
+<text x="310.8" y="400.0" fill="#7D8799">   ·   ensuite : Rejouer les paiements de test</text>
+<text x="16.8" y="464.6" fill="#D7DEE9">&gt; </text>
+<rect x="33.6" y="452.88" width="7.56" height="14.82" rx="0" fill="#D7DEE9" class="cursor"/>
 </svg>

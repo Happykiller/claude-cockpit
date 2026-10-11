@@ -12,26 +12,41 @@ Un panneau latéral animé pour [Claude Code](https://claude.com/claude-code). P
 
 ## Ce qu'il montre
 
-**L'activité, en permanence**
+**La configuration**
 
 - **Modèle et effort** : `Opus 5.5`, `high / max`, relus à chaque requête.
 - **Mode d'exécution** : `default`, `accept edits`, `plan`, `auto`, `bypass`. Il change dès que tu appuies sur `shift+tab`.
+
+**Les statistiques**
+
+- **La session** : sa durée, son coût en équivalent API et ses tokens, sous-agents compris : envoyés (↑), reçus (↓) et nombre de requêtes.
+
+**L'activité, en permanence**
+
 - **Fenêtre de 5 h** : consommation, heure de renouvellement, et **projection au rythme actuel**. Par exemple : `⚑ au rythme actuel : 100 % avant la fin, vers 14:32`.
 - **Semaine** : consommation et renouvellement.
 - **Contexte** : tokens sur la fenêtre, répartis entre système, outils, messages et réserve de compaction. Un toast prévient quand le contexte atteint 90 % du seuil de compaction automatique.
-- **Débit** : tokens produits par requête, plus la durée de la session et son coût en équivalent API.
+- **Débit** : tokens produits par requête, et la taille de la dernière réponse.
+- **Cache** : chaque requête renvoie toute la conversation ; ce que l'API a déjà vu, elle le relit dans son cache de prompt, environ dix fois moins cher. Le cockpit montre la part des envoyés relue du cache.
 - **En fond** : les commandes et sous-agents encore en cours, chacun avec sa durée.
 
 **Le plan, en frise**
 
 - Claude déclare le plan avec une estimation par étape, puis signale chaque transition. Le cockpit dessine :
-  - un rail de nœuds ;
-  - le temps passé contre l'estimation ;
+  - une frise sur toute la largeur : un nœud au départ de chaque étape, un ⚑ à la fin du plan, chaque étape aussi longue qu'elle dure ;
+  - au-dessus des nœuds, le numéro des étapes ; en dessous, les heures : réelles pour les étapes déjà lancées, prévues (`~14:56`) pour les autres, et la fin prévue sous le ⚑ ;
+  - le temps passé contre l'estimation, étape par étape ;
   - une barre pour l'étape en cours, qui passe au rouge au-delà de son estimation ;
-  - le reste et l'heure de fin estimés.
-- **Calibrage d'une session à l'autre** : le cockpit garde le temps réel contre l'estimation de chaque étape mesurée. Au bout de cinq étapes, il affiche le rapport (`×1,2`) et une heure de fin réaliste. Il transmet aussi ce rapport à Claude, qui corrige ses estimations suivantes.
+  - le titre du plan sur sa ligne, l'écoulé et le reste juste dessous.
+- **Calibrage d'une session à l'autre** : le cockpit garde le temps réel contre l'estimation de chaque étape mesurée. Au bout de cinq étapes, il transmet ce rapport à Claude, qui corrige ses estimations suivantes. Le panneau ne l'affiche pas.
 - **Alertes** : une étape bloquée (Claude t'attend) ou un plan fini envoie une notification du terminal et un toast.
-- Dix minutes après la fin d'un plan, le panneau affiche à la place les derniers plans.
+- Dix minutes après la fin d'un plan, le panneau affiche à la place les plans terminés dans cette session.
+
+**Des sections repliables**
+
+- Dans le panneau latéral, chaque titre de section se replie et se rouvre : un clic dessus, ou sa touche une fois le panneau sélectionné avec `ctrl+x tab` (`1` Configuration, `2` Statistiques, `3` Activité, `4` Plan).
+- Repliée, une section garde une ligne de résumé. Pour la configuration : `◆ Opus 5.5 · auto · effort high`. Pour l'activité, la fenêtre de 5 h : son taux, sa fin et la projection au rythme actuel, colorés comme la jauge (`5 H 57 % · fin 15:10 (1 h 12)  ⚑ 100 % vers 14:32`).
+- Le choix est mémorisé d'une session à l'autre.
 
 **Deux dispositions, au choix de Claude Code**
 
@@ -101,15 +116,16 @@ Le cockpit est un **mod** Claude Code : un module de hooks (`hooks/register.tsx`
 
 | Affiché | Source |
 | --- | --- |
-| Modèle, effort, contexte de chaque requête | le flux `turn.step` |
+| Modèle, effort, contexte et tokens de chaque requête (sous-agents compris pour les tokens) | le flux `turn.step` |
 | Limites, renouvellements, coût, répartition du contexte | `session.measure` et `$.session.usage()` |
 | Mode d'exécution | le `permission_mode` des hooks et l'indication du pied du prompt |
-| Travail en fond | `classic.Stop` (`background_tasks`), `SubagentStart` / `SubagentStop`, les `Bash` lancés en fond |
+| Travail en fond | `classic.Stop` (`background_tasks`), `SubagentStart` / `SubagentStop`, les `Bash` lancés en fond, les notifications de fin de tâche (`prompt.submit`), `$.agent.list()` |
 | Le plan | ses outils `mcp__cockpit__plan` / `mcp__cockpit__step`, plus `TodoWrite` et les outils de tâches |
 
 Le cockpit garde dans le store local du plugin, sous ton dossier de configuration Claude Code :
 - les mesures du calibrage : les 60 dernières étapes mesurées ;
-- les derniers plans finis : les 8 derniers.
+- les derniers plans finis : les 40 derniers, toutes sessions confondues, chacun marqué de sa session ;
+- les sections du panneau que tu as repliées.
 
 **Rien n'est envoyé nulle part.**
 
@@ -142,7 +158,8 @@ python3 docs/make_demo.py              # régénère les maquettes du README
 
 ## Limites
 
-- **Liste « EN FOND »** : elle est complète à chaque fin de tour. Entre deux tours, elle ajoute ce qui démarre et retire les sous-agents qui se terminent.
+- **Liste « EN FOND »** : elle est complète à chaque fin de tour. Entre deux tours, elle ajoute ce qui démarre, retire une tâche dès sa notification de fin, et recoupe les sous-agents avec la liste du moteur toutes les 15 secondes.
+- **Tokens de la session** : le cumul part du chargement du mod. Une session déjà ouverte au moment de l'installer ou de le recharger ne compte pas ce qui précède.
 - **Calibrage** : il démarre à cinq étapes mesurées. Une étape n'est mesurée que si Claude l'a ouverte avant de la clore.
 - **Pas de son** : le moteur n'a pas de lecteur audio dans les terminaux Linux et Windows.
 

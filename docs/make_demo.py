@@ -270,7 +270,7 @@ def dock(s: Svg, col: float, row: float, cols: int):
     s.text(c0 + W - 4, r, 'LIVE', ACC, True)
     r += 2
 
-    heading(s, c0, r, W, 'ACTIVITÉ')
+    heading(s, c0, r, W, 'CONFIGURATION')
     r += 2
 
     # Model and mode cards.
@@ -293,6 +293,30 @@ def dock(s: Svg, col: float, row: float, cols: int):
     for i in range(5):
         s.rect(ec + i * 1, r + 0.2, 0.62, 0.62, ACC if i < 3 else FA, rx=1)
     s.runs(ec + 5.4, r, [(' high', WH, True), (' / max', DM)])
+    r += 2
+
+    heading(s, c0, r, W, 'STATISTIQUES')
+    r += 2
+
+    # The session in three tiles: the tokens one carries sent and received.
+    sw = min(16, (W - 2) // 3)
+    s.frame(c0, r, sw, 5)
+    s.text(c0 + 2, r + 1, 'DURÉE', DM, True)
+    s.text(c0 + 2, r + 2, '2 h 14', WH, True)
+    s.text(c0 + 2, r + 3, 'depuis 12:31', DM)
+    s.frame(c0 + sw + 1, r, sw, 5)
+    s.text(c0 + sw + 3, r + 1, 'COÛT ≈', DM, True)
+    s.text(c0 + sw + 3, r + 2, '18,40 $', WARN, True)
+    s.text(c0 + sw + 3, r + 3, 'au tarif API', DM)
+    tx, tw = c0 + 2 * (sw + 1), W - 2 * sw - 2
+    s.frame(tx, r, tw, 5)
+    s.text(tx + 2, r + 1, 'TOKENS', DM, True)
+    s.right(tx + tw - 2, r + 1, '642 req.', DM)
+    s.text(tx + 2, r + 2, '21.7 M', ACC, True)
+    s.runs(tx + 2, r + 3, [('↑', ACC), (' 21.4 M', WH), ('  ↓', WARN), (' 286 k', WH)])
+    r += 6
+
+    heading(s, c0, r, W, 'ACTIVITÉ')
     r += 2
 
     # The 5-hour window, its pace, the week.
@@ -333,8 +357,12 @@ def dock(s: Svg, col: float, row: float, cols: int):
         bh = 0.8 * h
         delay = round((i * 0.37) % 2.4, 2)
         s.rect(c0 + 7 + i * 1, r + 0.92 - bh, 0.7, bh, ACC, rx=1, cls='flow', extra=f' style="animation-delay:-{delay}s"')
-    s.text(c0 + 18, r, '↓ 3 k', DM)
-    s.runs_right(c0 + W, r, [('session ', DM), ('2 h 14', WH), (' · ≈ 18,40 $ API', DM)])
+    s.runs_right(c0 + W, r, [('dernière réponse ', DM), ('↓', WARN), (' 3 k', WH)])
+    r += 2
+
+    # What the prompt cache served, said plainly.
+    s.text(c0, r, 'CACHE', DM, True)
+    s.runs_right(c0 + W, r, [('92 %', ACC, True), (' relus du cache, ≈ 10× moins chers', DM)])
     r += 2
 
     # Work left running.
@@ -352,29 +380,55 @@ def dock(s: Svg, col: float, row: float, cols: int):
     heading(s, c0, r, W, 'PLAN', [('3', ACC, True), (' / 7', DM)])
     r += 2
     s.text(c0, r, "Refonte de l'API de paiement", WH, True)
-    r += 1
-    # The rail: seven nodes, a spark running into the current one.
-    nodes = 7
-    gap = (W - nodes) / (nodes - 1)
-    for i in range(nodes):
-        x = c0 + i * (gap + 1)
-        if i > 0:
-            start = x - gap
-            color = OK if i <= 3 else (ACC if i == 4 else FA)
-            s.line(start + 0.2, r, gap - 0.4, color, 2.2)
-            if i == 4:
-                s.out.append(
-                    f'<circle cx="{s.x(start + 0.3)}" cy="{s.y(r) + LH / 2}" r="2.6" fill="{WH}" class="spark" style="--d:{round((gap - 0.6) * CW, 1)}px"/>'
-                )
-        cx, cy = s.x(x + 0.5), s.y(r) + LH / 2
+    s.runs(c0, r + 1, [('écoulé ', DM), ('1 h 10', WH), ('  ·  reste ≈ ', DM), ('46 min', ACC, True)])
+    r += 2
+    # The frieze: a node where each step began, ⚑ at the end, each step as long as it lasts.
+    starts = ['13:35', '13:47', '14:18', '14:36', '~14:56', '~15:11', '~15:21']
+    weights = [12, 31, 18, 20, 15, 10, 10]
+    nodes = len(weights)
+    room = W - nodes - 1
+    floor = 6
+    rest = room - floor * nodes
+    exact = [w / sum(weights) * rest for w in weights]
+    gaps = [floor + int(x) for x in exact]
+    for i in sorted(range(nodes), key=lambda i: -(exact[i] - int(exact[i])))[: room - sum(gaps)]:
+        gaps[i] += 1
+    cols = []
+    c = 0
+    for g in gaps:
+        cols.append(c)
+        c += 1 + g
+    for i, (col, g) in enumerate(zip(cols, gaps)):
+        x = c0 + col
+        cur = i == 3
+        idc = ACC if cur else (OK if i < 3 else DM)
+        s.text(x + (1 + g - 1) // 2, r, str(i + 1), idc, cur)
+        start = x + 1.2
+        span = g - 0.4
+        if i < 3:
+            s.line(start, r + 1, span, OK, 2.2)
+        elif cur:
+            s.line(start, r + 1, span * 0.45, ACC, 2.2)
+            s.line(start + span * 0.45, r + 1, span * 0.55, FA, 2.2)
+            s.out.append(f'<circle cx="{s.x(start + 0.1)}" cy="{s.y(r + 1) + LH / 2}" r="2.6" fill="{WH}" class="spark" style="--d:{round(span * 0.45 * CW, 1)}px"/>')
+        else:
+            s.line(start, r + 1, span, FA, 2.2)
+        cx, cy = s.x(x + 0.5), s.y(r + 1) + LH / 2
         if i < 3:
             s.out.append(f'<circle cx="{cx}" cy="{cy}" r="4.6" fill="{OK}"/>')
-        elif i == 3:
+        elif cur:
             s.out.append(f'<circle cx="{cx}" cy="{cy}" r="6" fill="none" stroke="{ACC}" stroke-width="2" class="pulse"/>')
             s.out.append(f'<circle cx="{cx}" cy="{cy}" r="2.8" fill="{ACC}"/>')
         else:
             s.out.append(f'<circle cx="{cx}" cy="{cy}" r="4" fill="none" stroke="{DM}" stroke-width="1.4"/>')
-    r += 2
+        hc = ACC if cur else (WH if i < 3 else DM)
+        # An hour that would touch the end's gives way, as in the mod.
+        if col + len(starts[i]) + 1 <= W - len('~15:31'):
+            s.text(x, r + 2, starts[i], hc, cur)
+    s.right(c0 + W, r, 'fin', DM)
+    s.text(c0 + W - 1, r + 1, '⚑', ACC, True)
+    s.right(c0 + W, r + 2, '~15:31', ACC, True)
+    r += 4
 
     done = [
         ('1', 'Cartographier les appels', '12 min', '15 min', WH),
@@ -412,22 +466,12 @@ def dock(s: Svg, col: float, row: float, cols: int):
         r += 1
     r += 1
 
-    # The three tiles, then the calibration.
-    tw = (W - 2) / 3
-    for i, (label, value, color) in enumerate([('ÉCOULÉ', '1 h 10', WH), ('RESTE ≈', '46 min', ACC), ('FIN ≈', '15:58', ACC)]):
-        x = c0 + i * (tw + 1)
-        s.frame(x, r, tw, 4)
-        s.text(x + 2, r + 1, label, DM, True)
-        s.text(x + 2, r + 2, value, color, True)
-    r += 4
-    s.runs(c0, r, [('calibrage ', DM), ('×1,2', OK, True), (" le réel sur l'estimé (34 étapes)", DM)])
-    s.runs(c0, r + 1, [('fin réaliste ', DM), ('16:07', WH, True)])
     return r + 3
 
 
 def make_dock():
     left_cols, panel_cols = 54, 60
-    rows = 56
+    rows = 68
     top = 34 + 10
     s = Svg(0, top)
     w = (left_cols + panel_cols + 6) * CW
@@ -445,7 +489,7 @@ def make_dock():
 def make_band():
     cols = 128
     top = 34 + 10
-    rows = 21
+    rows = 23
     s = Svg(0, top)
     w = (cols + 4) * CW
     h = top + rows * LH + 8
@@ -454,7 +498,7 @@ def make_band():
     W = cols - 4
     s.runs(c0 - 2, 0, [('● ', OK), ('Edit', TX, True), ('(src/billing/webhooks/router.ts)', DM)])
     s.runs(c0 - 2, 1, [('  ⎿ ', FA), ('Updated with 38 additions and 21 removals', DM)])
-    s.frame(2, 2.4, cols, 15.6, EDGE)
+    s.frame(2, 2.4, cols, 17.6, EDGE)
     r = 3
     s.text(c0, r, '◢◤ C O C K P I T', ACC, True)
     s.runs(c0 + W - 62, r, [('◆ Opus 5.5', WH, True), ('   effort ', DM)])
@@ -493,6 +537,9 @@ def make_band():
     s.rect(cols3[2] + cw3 * 0.83, y + 0.22, cw3 * 0.17, 0.56, WARN, rx=1, extra=' opacity="0.28"')
     s.runs(cols3[2], r + 2, [('■', ACC2), (' système 3 %  ', DM), ('■', ACC2), (' outils 5 %  ', DM), ('■', ACC), (' messages', DM)])
     r += 5
+    s.runs(c0, r, [('A C T I V I T É   ', DM, True), ('2 h 14', WH, True), ('  ·  ', DM), ('≈ 18,40 $ API', WARN, True), ('  ·  ', DM), ('21.7 M', ACC, True), (' tokens  ', DM), ('↑', ACC), (' 21.4 M', WH), ('  ↓', WARN), (' 286 k', WH), ('  ·  642 req.', DM)])
+    s.runs_right(c0 + W, r, [('relus du cache ', DM), ('92 %', WH), (' des envoyés', DM)])
+    r += 2
     s.text(c0, r, 'E N   F O N D', DM, True)
     s.spinner(c0 + 15, r, ACC)
     s.runs(c0 + 17, r, [('revue du lot', WH), (' 12 min', DM), ('   ·   ', DM)])
@@ -500,7 +547,7 @@ def make_band():
     s.runs(c0 + 43, r, [('npm run test:e2e', WH), (' 3 min', DM)])
     r += 2
     s.runs(c0, r, [('P L A N   ', DM, True), ("Refonte de l'API de paiement  ", WH, True), ('3', ACC, True), ('/7', DM)])
-    s.runs(c0 + W - 50, r, [('écoulé ', DM), ('1 h 10', WH, True), ('  ·  reste ≈ ', DM), ('46 min', ACC, True), ('  ·  fin ≈ ', DM), ('15:58', ACC, True)])
+    s.runs(c0 + W - 50, r, [('écoulé ', DM), ('1 h 10', WH, True), ('  ·  reste ≈ ', DM), ('46 min', ACC, True), ('  ·  fin ≈ ', DM), ('15:31', ACC, True)])
     r += 1
     steps = [
         ('1', 'Cartographier', '12 min / 15 min', 'done'),
