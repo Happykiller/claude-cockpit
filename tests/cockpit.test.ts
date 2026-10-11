@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { fmtDur, fromTodos, measured, modeFromHint, moveStep, parseEstimate, prettyModel, project, ratioOf, setPlan, totals, MIN } from '../hooks/model'
+import { endedTasks, fmtDur, fromTodos, measured, modeFromHint, moveStep, parseEstimate, apportion, placeLabels, prettyModel, project, ratioOf, setPlan, spread, timeline, totals, MIN } from '../hooks/model'
 
 const T0 = Date.UTC(2026, 9, 10, 8, 0, 0)
 
@@ -34,6 +34,30 @@ test('les noms et les durées se lisent comme dans la maquette', async () => {
   expect(parseEstimate('Écrire l’épreuve (~20 min)')).toBe(20)
   expect(parseEstimate('Recuire le monde ~1 h 30')).toBe(90)
   expect(parseEstimate('Sans estimation')).toBeUndefined()
+})
+
+test('la frise se répartit sur toute la largeur', async () => {
+  expect(spread(50, 3)).toEqual([16, 17, 17])
+  expect(spread(54 - 4, 3).reduce((a, b) => a + b, 0)).toBe(50)
+  expect(spread(2, 5)).toEqual([1, 1, 1, 1, 1])
+  expect(spread(10, 0)).toEqual([])
+})
+
+test('la frise place chaque étape sur l’horloge', async () => {
+  let plan = setPlan(null, { title: 'P', steps: [{ title: 'A', estimate_min: 20 }, { title: 'B', estimate_min: 30 }, { title: 'C' }] }, T0)
+  plan = moveStep(plan, 0, 'in_progress', T0)
+  plan = moveStep(plan, 0, 'completed', T0 + 25 * MIN)
+  plan = moveStep(plan, 1, 'in_progress', T0 + 25 * MIN)
+  // B dépasse son estimation : elle s'étire jusqu'à maintenant et pousse la suite.
+  const tl = timeline(plan, T0 + 60 * MIN)
+  expect(tl.spans.map(s => [(s.start - T0) / MIN, (s.end - T0) / MIN, s.isStartReal])).toEqual([[0, 25, true], [25, 60, true], [60, 60, false]])
+  expect(tl.isEndReal).toBe(false)
+  expect(apportion([25, 35, 0], 30, 6)).toEqual([11, 13, 6])
+  // Trop étroit pour le minimum : chacun a sa part égale, le reste aux premiers.
+  expect(apportion([1, 1, 1, 1], 10, 6)).toEqual([3, 3, 2, 2])
+  // La première venue l'emporte ; ce qui chevauche ou déborde est omis.
+  expect(placeLabels(20, [{ col: 6, text: 'cur' }, { col: 0, text: 'fin', right: true }, { col: 5, text: 'x' }, { col: 0, text: 'aa' }]).map(l => [l.at, l.text]))
+    .toEqual([[0, 'aa'], [6, 'cur'], [17, 'fin']])
 })
 
 test('la frise mesure le passé et estime le reste', async () => {
@@ -136,7 +160,16 @@ test('les outils du cockpit tiennent le plan, et les deux placements le dessinen
   expect(await dock.find({ text: /P09 Le construit/ })).toBeDefined()
   expect(await dock.find({ text: /rive glissante/ })).toBeDefined()
   expect(await dock.find({ text: /relecture du lot/ })).toBeDefined()
-  expect(await dock.find({ text: /RESTE/ })).toBeDefined()
+  // Le titre a sa ligne ; l'écoulé et le reste viennent dessous.
+  expect(await dock.find({ type: 'Text', text: /^P09 Le construit$/ })).toBeDefined()
+  expect(await dock.find({ type: 'Text', text: /^écoulé .+  ·  reste ≈ / })).toBeDefined()
+  // 58 colonnes, deux de marge de chaque côté : la frise court sur les 54 restantes.
+  expect((await dock.find({ text: /^●━+◉━+○━+⚑$/ }))?.text.length).toBe(54)
+  // Sous les nœuds : le départ réel, celui de l'étape en cours, le départ prévu, la fin prévue.
+  const hours = (await dock.find({ text: /^08:00 +08:05/ }))?.text ?? ''
+  expect(hours.split(/ +/)).toEqual(['08:00', '08:05', '~10:05', '~11:15'])
+  expect(hours.length).toBe(54)
+  expect(await dock.find({ text: /^ +1 +2 +3 +fin$/ })).toBeDefined()
   await dock.unmount()
 
   const band = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('inline', 180), viewport: { columns: 182, rows: 40, isFullscreen: false } })
@@ -154,7 +187,7 @@ test('sans plan, le cockpit attend en veille', async ($, on) => {
   await ui.unmount()
 })
 
-test('le cockpit montre le travail laissé en fond et son calibrage', async ($, on) => {
+test('le cockpit montre le travail laissé en fond, le calibrage reste en coulisse', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   quiet(on)
   mock.store(on, { samples: [[10, 14], [10, 14], [20, 28], [5, 7], [5, 7]] })
@@ -171,18 +204,21 @@ test('le cockpit montre le travail laissé en fond et son calibrage', async ($, 
   const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 50, isFullscreen: true } })
   await dock.drawn()
   const seen = async (re: RegExp) => [re.source, (await dock.find({ text: re })) !== undefined]
-  expect(await seen(/EN FOND/)).toEqual(['EN FOND', true])
+  expect(await seen(/^EN FOND$/)).toEqual(['^EN FOND$', true])
   expect(await seen(/banc inversé/)).toEqual(['banc inversé', true])
   expect(await seen(/P09 E6b/)).toEqual(['P09 E6b', false])
-  expect(await seen(/×1,4/)).toEqual(['×1,4', true])
-  expect(await seen(/fin réaliste/)).toEqual(['fin réaliste', true])
+  expect(await seen(/×1,4/)).toEqual(['×1,4', false])
   await dock.unmount()
 })
 
-test('un plan fini laisse place à l’historique au bout de dix minutes', async ($, on) => {
+test('un plan fini laisse place à l’historique de la session au bout de dix minutes', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   quiet(on)
-  mock.store(on)
+  on('session.id', () => ({ value: 'ici' }))
+  mock.store(on, { plans: [
+    { title: 'Ailleurs', finishedAt: T0 - 60 * MIN, steps: 2, estimateMin: 20, realMs: 18 * MIN, sessionId: 'autre' },
+    { title: 'Avant les sessions', finishedAt: T0 - 90 * MIN, steps: 1, estimateMin: 5, realMs: 4 * MIN },
+  ] })
   await $.tool.call({ tool: 'mcp__cockpit__plan', title: 'Court', steps: [{ title: 'Seule', estimate_min: 5 }] })
   await $.tool.call({ tool: 'mcp__cockpit__step', step: 1, status: 'in_progress' })
   await clock.advance(4 * MIN)
@@ -192,7 +228,149 @@ test('un plan fini laisse place à l’historique au bout de dix minutes', async
   await ui.drawn()
   const seen = async (re: RegExp) => [re.source, (await ui.find({ text: re })) !== undefined]
   expect(await seen(/Seule/)).toEqual(['Seule', false])
-  expect(await seen(/D E R N I E R S/)).toEqual(['D E R N I E R S', true])
+  expect(await seen(/P L A N S   D E   L A   S E S S I O N/)).toEqual(['P L A N S   D E   L A   S E S S I O N', true])
   expect(await seen(/Court/)).toEqual(['Court', true])
+  expect(await seen(/Ailleurs/)).toEqual(['Ailleurs', false])
+  expect(await seen(/Avant les sessions/)).toEqual(['Avant les sessions', false])
   await ui.unmount()
+})
+
+test('la configuration et l’activité se séparent, les tokens de la session se cumulent', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  quiet(on)
+  const usages = [
+    { input_tokens: 2_000, output_tokens: 1_500, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 8_000 },
+    { input_tokens: 1_000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+  ]
+  on('turn.step', async function* (_$, e) {
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const, usage: { ...usages[e.index]!, model: e.model } }
+  })
+  for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 1 })) void _
+  for await (const _ of $.turn.step({ turnId: 't1', index: 1, model: 'claude-opus-5-5', messageCount: 1, agentId: 'a1' })) void _
+  await clock.advance(0)
+
+  const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
+  await dock.drawn()
+  const seen = async (re: RegExp) => [re.source, (await dock.find({ text: re })) !== undefined]
+  expect(await seen(/C O N F I G U R A T I O N/)).toEqual(['C O N F I G U R A T I O N', true])
+  expect(await seen(/A C T I V I T É/)).toEqual(['A C T I V I T É', true])
+  // 101 k envoyés (dont 90 k lus et 8 k écrits au cache) + 2 k reçus, sur deux requêtes, sous-agent compris.
+  expect(await seen(/^103 k$/)).toEqual(['^103 k$', true])
+  expect(await seen(/^2 req\.$/)).toEqual(['^2 req\\.$', true])
+  expect(await seen(/^ 101 k$/)).toEqual(['^ 101 k$', true])
+  expect(await seen(/^89 %$/)).toEqual(['^89 %$', true])
+  // Le cache tient en une ligne : la part relue, et pourquoi elle compte.
+  expect(await seen(/^ relus du cache, ≈ 10× moins chers$/)).toEqual(['^ relus du cache, ≈ 10× moins chers$', true])
+  expect(await seen(/S T A T I S T I Q U E S/)).toEqual(['S T A T I S T I Q U E S', true])
+  await dock.unmount()
+
+  const band = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('inline', 180), viewport: { columns: 182, rows: 40, isFullscreen: false } })
+  await band.drawn()
+  expect(await band.find({ text: /relus du cache/ })).toBeDefined()
+  await band.unmount()
+})
+
+test('une tâche de fond finie quitte la liste dès sa notification, un sous-agent fini aussi', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  quiet(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text }))
+  on('agent.list', () => ({ value: [
+    { id: 'a1', description: 'revue du lot', type: 'general-purpose', status: 'running' as const },
+    { id: 'a2', description: 'carto', type: 'Explore', status: 'completed' as const },
+  ] }))
+  on('classic.SessionStart', () => ({}))
+  on('turn.complete', () => ({ text: '' }))
+  on('session.usage', () => ({ value: { startedAt: T0, context: { window: 1_000_000 }, rateLimits: [] } }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  expect(endedTasks('<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>')).toEqual(['b1'])
+  expect(endedTasks('<task-notification><task-id>m1</task-id><summary>un événement</summary></task-notification>')).toEqual([])
+
+  await $.classic.Stop({ stop_hook_active: false, background_tasks: [
+    { id: 'b1', type: 'shell', status: 'running', description: 'banc inversé' },
+    { id: 'b2', type: 'shell', status: 'running', description: 'serveur de dev' },
+    { id: 'a1', type: 'subagent', status: 'running', description: 'a1' },
+    { id: 'a2', type: 'subagent', status: 'running', description: 'a2' },
+  ] })
+  await $.prompt.submit({ text: '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>fini</summary>\n</task-notification>', origin: { kind: 'task-notification' }, wait: false })
+  await $.turn.complete({ turnId: 't1', answer: '', durationMs: 1000, isAborted: false, reason: 'answer' })
+  await clock.advance(0)
+
+  const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
+  await dock.drawn()
+  const seen = async (re: RegExp) => [re.source, (await dock.find({ text: re })) !== undefined]
+  expect(await seen(/banc inversé/)).toEqual(['banc inversé', false])
+  expect(await seen(/serveur de dev/)).toEqual(['serveur de dev', true])
+  expect(await seen(/revue du lot/)).toEqual(['revue du lot', true])
+  expect(await seen(/^a2$/)).toEqual(['^a2$', false])
+  await dock.unmount()
+
+  // Une nouvelle session repart sans rien en fond.
+  await $.classic.SessionStart({ source: 'clear' })
+  const fresh = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
+  await fresh.drawn()
+  expect(await fresh.find({ text: /^EN FOND$/ })).toBeUndefined()
+  await fresh.unmount()
+})
+
+test('un titre de section se replie et se rouvre', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  quiet(on)
+  mock.store(on)
+  const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
+  await dock.drawn()
+  const seen = async (re: RegExp) => [re.source, (await dock.find({ text: re })) !== undefined]
+  expect(await seen(/▾ C O N F I G U R A T I O N/)).toEqual(['▾ C O N F I G U R A T I O N', true])
+  expect(await seen(/^MODÈLE$/)).toEqual(['^MODÈLE$', true])
+
+  await dock.press({ key: 'fold:config' })
+  await dock.press({ key: 'fold:activity' })
+  await dock.press({ key: 'fold:stats' })
+  expect(await seen(/^DURÉE$/)).toEqual(['^DURÉE$', false])
+  // Repliées, les statistiques tiennent en une ligne.
+  expect(await seen(/^—  ·  —  ·  — tokens$/)).toEqual(['^—  ·  —  ·  — tokens$', true])
+  expect(await seen(/▸ C O N F I G U R A T I O N/)).toEqual(['▸ C O N F I G U R A T I O N', true])
+  expect(await seen(/^MODÈLE$/)).toEqual(['^MODÈLE$', false])
+  expect(await seen(/effort/)).toEqual(['effort', true])
+  expect(await seen(/^SEMAINE$/)).toEqual(['^SEMAINE$', false])
+  expect(await seen(/^5 H $/)).toEqual(['^5 H $', true])
+
+  await dock.press({ key: 'fold:config' })
+  expect(await seen(/^MODÈLE$/)).toEqual(['^MODÈLE$', true])
+  await dock.unmount()
+})
+
+test('les sections repliées le restent d’une session à l’autre', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  quiet(on)
+  mock.store(on, { closed: ['config'] })
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('command.register', (_$, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_$, e) => ({ value: { tool: e.name } }))
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
+  await dock.drawn()
+  expect(await dock.find({ text: /▸ C O N F I G U R A T I O N/ })).toBeDefined()
+  expect(await dock.find({ text: /^MODÈLE$/ })).toBeUndefined()
+  await dock.unmount()
+})
+
+test('repliée, l’activité garde la fenêtre de 5 h : sa fin et sa projection, en couleur', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  quiet(on)
+  mock.store(on)
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  const resetsAt = new Date(T0 + 120 * MIN).toISOString()
+  const measure = (pct: number) => $.session.measure({ context: { window: 1_000_000 }, rateLimits: [{ kind: 'five_hour', percentUsed: pct, resetsAt }], changed: ['rateLimits'] })
+  await measure(40)
+  await clock.advance(30 * MIN)
+  await measure(60)
+  const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
+  await dock.press({ key: 'fold:activity' })
+  await dock.drawn()
+  // 20 points en 30 min : les 100 % tombent 1 h plus tard, avant la fin de la fenêtre.
+  expect(await dock.find({ type: 'Text', text: /^5 H 60 % · fin 10:00 \(1 h 30\)$/ })).toBeDefined()
+  // Une heure devant soi : ambre ; moins d'une demi-heure, ce serait le corail.
+  expect((await dock.find({ type: 'Text', text: /^⚑ 100 % vers 09:30$/ }))?.props.color).toBe('ansi256(3)')
+  await dock.unmount()
 })

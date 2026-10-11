@@ -1,4 +1,4 @@
-import type { Plan, PlanSummary, Step, StepStatus } from '../types'
+import type { Plan, PlanSummary, SessionTokens, Step, StepStatus } from '../types'
 
 export const MIN = 60_000
 
@@ -89,6 +89,49 @@ export function wave(n: number, width: number): string {
     s += RAMP[Math.min(7, Math.floor(v * v * 8))]
   }
   return s
+}
+
+export type Usage = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }
+
+/** The session's tally with one more request answered. */
+export function addUsage(prev: SessionTokens | undefined, u: Usage): SessionTokens {
+  const t = prev ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }
+  return {
+    input: t.input + u.input_tokens,
+    output: t.output + u.output_tokens,
+    cacheRead: t.cacheRead + u.cache_read_input_tokens,
+    cacheWrite: t.cacheWrite + u.cache_creation_input_tokens,
+    requests: t.requests + 1,
+  }
+}
+
+/** What was sent (uncached input and both cache sides), the grand total, and the share the cache served. */
+export function tokenShares(t: SessionTokens) {
+  const sent = t.input + t.cacheRead + t.cacheWrite
+  return { sent, total: sent + t.output, readPct: sent > 0 ? (t.cacheRead / sent) * 100 : 0 }
+}
+
+/** `total` cells cut into `parts` runs as even as cells allow, the longer ones spread out. */
+export function spread(total: number, parts: number): number[] {
+  if (parts <= 0) return []
+  const t = Math.max(parts, total)
+  return Array.from({ length: parts }, (_, i) => Math.floor(((i + 1) * t) / parts) - Math.floor((i * t) / parts))
+}
+
+const ENDED = /^(completed|failed|killed|stopped|cancell?ed|error)$/i
+
+/** The tasks a background notification reports ended, by id: one `<task-notification>` block each. */
+export function endedTasks(text: string): string[] {
+  return [...text.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)].flatMap(m => {
+    const id = /<task-id>\s*([^<\s]+)\s*<\/task-id>/.exec(m[1]!)?.[1]
+    const status = /<status>\s*([^<\s]+)\s*<\/status>/.exec(m[1]!)?.[1]
+    return id && status && ENDED.test(status) ? [id] : []
+  })
+}
+
+/** Whether an agent the engine lists has stopped running. */
+export function isEnded(status: string): boolean {
+  return ENDED.test(status)
 }
 
 export const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
@@ -264,6 +307,79 @@ export function measured(prev: Plan | null, next: Plan): [number, number][] {
 }
 
 export const CALIBRATION_MIN = 5
+
+/** One step on the time axis: when it began (or should), when it ended (or should). */
+export type Span = { start: number; end: number; isStartReal: boolean }
+export type Timeline = { spans: Span[]; end: number; isEndReal: boolean }
+
+/**
+ * The plan laid on the clock: a started step from its real start, a running one
+ * to its estimate or to now past it, a pending one after the one before. A step
+ * with no estimate takes no time, the remaining total saying `+?` for it.
+ */
+export function timeline(plan: Plan, now: number): Timeline {
+  let cursor = plan.steps.find(s => s.startedAt !== undefined)?.startedAt ?? plan.createdAt
+  const spans = plan.steps.map(s => {
+    const start = s.startedAt ?? (s.status === 'pending' ? Math.max(cursor, now) : cursor)
+    const end = spanEnd(s, start, now)
+    cursor = Math.max(cursor, end)
+    return { start, end, isStartReal: s.startedAt !== undefined }
+  })
+  const allDone = plan.steps.length > 0 && plan.steps.every(s => s.status === 'completed' || s.status === 'skipped')
+  return { spans, end: cursor, isEndReal: allDone }
+}
+
+function spanEnd(s: Step, start: number, now: number): number {
+  const est = (s.estimateMin ?? 0) * MIN
+  switch (s.status) {
+    case 'completed':
+    case 'skipped':
+      return s.endedAt ?? start
+    case 'pending':
+      return start + est
+    default:
+      return Math.max(now, start + est)
+  }
+}
+
+/** `total` cells shared by weight, each part given `min` first when there is room for it. */
+export function apportion(weights: readonly number[], total: number, min: number): number[] {
+  const n = weights.length
+  if (n === 0) return []
+  const floor = total >= min * n ? min : Math.max(1, Math.floor(total / n))
+  const rest = Math.max(0, total - floor * n)
+  const sum = weights.reduce((a, w) => a + Math.max(0, w), 0)
+  if (sum <= 0) return spread(floor * n + rest, n)
+  const exact = weights.map(w => (Math.max(0, w) / sum) * rest)
+  const out = exact.map(x => floor + Math.floor(x))
+  let left = floor * n + rest - out.reduce((a, b) => a + b, 0)
+  const order = exact.map((x, i) => [x - Math.floor(x), i] as const).sort((a, b) => b[0] - a[0])
+  for (const [, i] of order) {
+    if (left <= 0) break
+    out[i]!++
+    left--
+  }
+  return out
+}
+
+/** A label for one line of `width` cells: its column, or `right` to end on the line's end. */
+export type Label = { col: number; text: string; right?: true }
+
+/**
+ * Keeps the labels that fit, in the order given (the first ones win), each a
+ * cell clear of the others and inside the line; returns them left to right.
+ */
+export function placeLabels<L extends Label>(width: number, labels: readonly L[]): (L & { at: number })[] {
+  const kept: (L & { at: number })[] = []
+  for (const l of labels) {
+    const at = l.right ? width - l.text.length : l.col
+    const to = at + l.text.length
+    if (at < 0 || to > width) continue
+    if (kept.some(k => at < k.at + k.text.length + 1 && k.at < to + 1)) continue
+    kept.push({ ...l, at })
+  }
+  return kept.sort((a, b) => a.at - b.at)
+}
 
 /** Real over estimated, summed so long steps weigh as they cost; absent below five steps. */
 export function ratioOf(samples: readonly (readonly [number, number])[]): number | undefined {

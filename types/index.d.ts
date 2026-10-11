@@ -37,6 +37,8 @@ export type Activity = {
   limits: Limit[]
   costUsd?: number
   startedAt?: number
+  /** What the session's requests sent and received, subagents included, since `startedAt`. */
+  tokens?: SessionTokens
   /** The context window's fill, one reading per measure, newest last. */
   history: number[]
   /** Output tokens of each main-loop request, newest last. */
@@ -48,6 +50,15 @@ export type Activity = {
   /** The 5-hour window's readings `[at, percent]`, for the window `trailFor` ends. */
   trail?: [number, number][]
   trailFor?: string
+}
+
+export type SessionTokens = {
+  /** Uncached input: what neither hit nor fed the prompt cache. */
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  requests: number
 }
 
 export type ContextParts = {
@@ -64,13 +75,22 @@ export type ContextParts = {
 export type BgTask = { id: string; kind: 'shell' | 'agent' | 'other'; label: string; startedAt: number }
 
 /** A finished plan, as the history keeps it across sessions. */
-export type PlanSummary = { title: string; finishedAt: number; steps: number; estimateMin: number; realMs: number }
+export type PlanSummary = {
+  title: string
+  finishedAt: number
+  steps: number
+  estimateMin: number
+  realMs: number
+  /** The session that ran it; the panel lists only the current session's. */
+  sessionId?: string
+}
 
 /** What earlier sessions taught: Claude's estimates against the clock. */
 export type Memory = {
   /** Real time over estimated, over the latest measured steps; absent below five. */
   ratio?: number
   count: number
+  /** The plans this session finished, newest first. */
   recent: PlanSummary[]
 }
 
@@ -85,6 +105,8 @@ declare module 'claude-code' {
       working: boolean
       bg: BgTask[]
       memory: Memory
+      /** The dock's folded sections, as the store keeps them across sessions. */
+      closed: string[]
     }
   }
 }

@@ -2,8 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
 import type { Activity, BgTask, ContextParts, Memory, Plan, PlanSummary, StepStatus } from '../types'
-import { addTask, fmtDur, fmtRatio, fromTodos, measured, modeFromHint, moveStep, ratioOf, setPlan, summarize } from './model'
-import type { PlanInput } from './model'
+import { addTask, addUsage, endedTasks, fmtDur, fmtRatio, fromTodos, isEnded, measured, modeFromHint, moveStep, ratioOf, setPlan, summarize } from './model'
+import type { PlanInput, Usage } from './model'
 import { Band, Dock } from './view'
 
 const PANE = 'cockpit'
@@ -16,12 +16,15 @@ const plan = atom({ plugin: 'cockpit', key: 'plan' } as const, null as Plan | nu
 const working = atom({ plugin: 'cockpit', key: 'working' } as const, false)
 const bg = atom({ plugin: 'cockpit', key: 'bg' } as const, [] as BgTask[])
 const memory = atom({ plugin: 'cockpit', key: 'memory' } as const, { count: 0, recent: [] } as Memory)
+const closed = atom({ plugin: 'cockpit', key: 'closed' } as const, [] as string[])
 
 /** Across sessions, in the plugin's store: the latest measured steps and finished plans. */
 const SAMPLES = 'samples'
 const PLANS = 'plans'
+const CLOSED = 'closed'
 const KEEP_SAMPLES = 60
-const KEEP_PLANS = 8
+/** Every session writes to the same store: enough room that a busy one does not push out the others' plans. */
+const KEEP_PLANS = 40
 
 const STATUSES: readonly StepStatus[] = ['pending', 'in_progress', 'completed', 'blocked', 'skipped']
 
@@ -56,6 +59,7 @@ async function beat($: EngineInterface) {
   if (now - lastPoll > POLL_MS || renewed) {
     lastPoll = now
     void $.session.usage().then(u => noteUsage($, u)).catch(() => undefined)
+    void pruneAgents($).catch(() => undefined)
   }
   const seen = hintMode
   if (seen !== undefined) {
@@ -102,6 +106,8 @@ async function noteUsage($: EngineInterface, u: { context: SessionContextUsage; 
       limits: u.rateLimits.length > 0 ? u.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })) : x.limits,
       costUsd: u.cost?.usd ?? x.costUsd,
       startedAt: u.startedAt ?? x.startedAt,
+      // A new start (/clear) begins a new tally.
+      tokens: u.startedAt !== undefined && x.startedAt !== undefined && u.startedAt !== x.startedAt ? undefined : x.tokens,
       history: pct !== undefined && pct !== last ? [...x.history, pct].slice(-60) : x.history,
     }
   })
@@ -124,7 +130,7 @@ async function noteParts($: EngineInterface) {
 }
 
 /** One main-loop request answered: its context fill and its output, at once. */
-async function noteStep($: EngineInterface, usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }) {
+async function noteStep($: EngineInterface, usage: Usage) {
   const tokens = usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens
   await update($, activity, x => {
     const window = x.contextWindow
@@ -139,6 +145,11 @@ async function noteStep($: EngineInterface, usage: { input_tokens: number; outpu
     }
   })
   await warnCompaction($, tokens)
+}
+
+/** Any request answered, a subagent's too: the session's tally, as its cost counts them. */
+async function noteTokens($: EngineInterface, usage: Usage) {
+  await update($, activity, x => ({ ...x, tokens: addUsage(x.tokens, usage) }))
 }
 
 /** Rings once when the window comes within a tenth of the compaction threshold. */
@@ -158,7 +169,9 @@ async function warnCompaction($: EngineInterface, tokens: number) {
 
 async function loadMemory($: EngineInterface) {
   const samples = ((await $.store.get(SAMPLES)) ?? []) as [number, number][]
-  const recent = ((await $.store.get(PLANS)) ?? []) as PlanSummary[]
+  const sessionId = await $.session.id().catch(() => undefined)
+  // The store holds every session's plans; the panel shows this one's.
+  const recent = (((await $.store.get(PLANS)) ?? []) as PlanSummary[]).filter(p => p.sessionId !== undefined && p.sessionId === sessionId)
   await $.state.set({ plugin: 'cockpit', key: 'memory' }, { ratio: ratioOf(samples), count: samples.length, recent })
 }
 
@@ -173,7 +186,7 @@ async function savePlan($: EngineInterface, prev: Plan | null, next: Plan | null
     await $.store.set(SAMPLES, samples)
   }
   if (next.finishedAt !== undefined && prev?.finishedAt === undefined) {
-    const summary = summarize(next, now)
+    const summary = { ...summarize(next, now), sessionId: await $.session.id().catch(() => undefined) }
     const plans = [summary, ...(((await $.store.get(PLANS)) ?? []) as PlanSummary[])].slice(0, KEEP_PLANS)
     await $.store.set(PLANS, plans)
     void notify($, `Plan « ${next.title} » terminé en ${fmtDur(summary.realMs)}`)
@@ -183,6 +196,17 @@ async function savePlan($: EngineInterface, prev: Plan | null, next: Plan | null
     const was = prev?.steps.find(p => p.id === s.id)
     if (s.status === 'blocked' && was?.status !== 'blocked') void notify($, `Étape ${s.id} bloquée : ${s.note ?? s.title}`)
   })
+}
+
+/** Folds a dock section or opens it again, and keeps the choice for the next sessions. */
+async function toggleFold($: EngineInterface, id: string) {
+  const next = await update($, closed, xs => (xs.includes(id) ? xs.filter(x => x !== id) : [...xs, id]))
+  await $.store.set(CLOSED, next)
+}
+
+async function loadFolds($: EngineInterface) {
+  const kept = await $.store.get(CLOSED)
+  if (Array.isArray(kept)) await $.state.set({ plugin: 'cockpit', key: 'closed' }, kept.filter((x): x is string => typeof x === 'string'))
 }
 
 async function notify($: EngineInterface, text: string) {
@@ -204,6 +228,17 @@ async function addBg($: EngineInterface, task: Omit<BgTask, 'startedAt'>) {
 
 async function dropBg($: EngineInterface, id: string) {
   await update($, bg, xs => xs.filter(x => x.id !== id))
+}
+
+/** The subagents still running, as the engine lists them: one it ended or dropped leaves, the others take its own description. */
+async function pruneAgents($: EngineInterface) {
+  if (!(await read($, bg)).some(x => x.kind === 'agent')) return
+  const agents = await $.agent.list()
+  await update($, bg, xs => xs.flatMap(x => {
+    if (x.kind !== 'agent') return [x]
+    const a = agents.find(y => y.id === x.id)
+    return !a || isEnded(a.status) ? [] : [{ ...x, label: a.description || x.label }]
+  }))
 }
 
 async function refresh($: EngineInterface) {
@@ -287,6 +322,7 @@ export const register: Register = on => {
     })
     await refresh($).catch(() => undefined)
     await loadMemory($).catch(() => undefined)
+    await loadFolds($).catch(() => undefined)
     startTimer($, false)
     void openPane($)
     return next(e)
@@ -324,7 +360,10 @@ export const register: Register = on => {
   on('turn.step', async function* ($, e, next) {
     if (e.agentId === undefined) void noteModel($, e.model, e.effort)
     const answered = yield* next(e)
-    if (e.agentId === undefined && answered.usage) void noteStep($, answered.usage).catch(() => undefined)
+    if (answered.usage) {
+      const usage = answered.usage
+      void noteTokens($, usage).then(() => (e.agentId === undefined ? noteStep($, usage) : undefined)).catch(() => undefined)
+    }
     return answered
   })
 
@@ -339,6 +378,7 @@ export const register: Register = on => {
       await $.state.set({ plugin: 'cockpit', key: 'working' }, false)
       startTimer($, false)
       void refresh($).catch(() => undefined)
+      void pruneAgents($).catch(() => undefined)
     }
     return next(e)
   })
@@ -455,6 +495,21 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
+  // A background task's end reaches the session as a notification: it leaves at once, not at the turn's end.
+  on('prompt.submit', async ($, e, next) => {
+    if (e.origin.kind === 'task-notification') {
+      const ended = endedTasks(e.text)
+      if (ended.length > 0) await update($, bg, xs => xs.filter(x => !ended.includes(x.id)))
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // A new session, a resumed or a cleared one, starts with nothing running.
+  on('classic.SessionStart', async ($, e, next) => {
+    if (e.source !== 'compact') await $.state.set({ plugin: 'cockpit', key: 'bg' }, [])
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   on('classic.SubagentStart', async ($, e, next) => {
     await addBg($, { id: e.agent_id, kind: 'agent', label: e.agent_type })
     return next(e)
@@ -479,10 +534,16 @@ export const register: Register = on => {
     return ran
   }).catch(($, e, next) => next(e))
 
+  // A section title pressed, by a click or its digit: the section folds or opens.
+  on('ui.press', async ($, e, next) => {
+    if (e.plugin === 'cockpit' && e.requestId === PANE && e.element.startsWith('fold:')) await toggleFold($, e.element.slice('fold:'.length))
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   // ── The drawing ───────────────────────────────────────────────────────
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const E = $.ui.resolve(e)
-    const [t, stored, p, w, tasks, m] = await Promise.all([read($, tick), read($, activity), read($, plan), read($, working), read($, bg), read($, memory)])
+    const [t, stored, p, w, tasks, m, folded] = await Promise.all([read($, tick), read($, activity), read($, plan), read($, working), read($, bg), read($, memory), read($, closed)])
     // Un état conservé par une version antérieure du mod peut manquer d'un champ né depuis.
     const a: Activity = { ...stored, limits: stored.limits ?? [], history: stored.history ?? [], flow: stored.flow ?? [] }
     const d = {
@@ -494,6 +555,7 @@ export const register: Register = on => {
       working: w,
       bg: tasks ?? [],
       memory: m ?? { count: 0, recent: [] },
+      closed: folded ?? [],
       tz: a.tzOffsetMin ?? 0,
       cols: e.props.bodyColumns,
       rows: e.props.scroll.bodyRows,
