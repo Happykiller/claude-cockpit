@@ -118,6 +118,7 @@ Nothing to do: a section of the system prompt asks Claude to declare a plan for 
 | `/cockpit reset` | Clears the current plan |
 | `/cockpit close` | Closes the panel |
 | `/cockpit version` | Prints the installed version and the link to the changelog |
+| `/cockpit update` | Updates the cockpit to the latest version (the two `claude plugin` commands a terminal would run); `/reload-plugins` then loads it |
 
 The cockpit also follows `TodoWrite` and `TaskCreate` / `TaskUpdate` lists when a session uses them.
 
@@ -127,7 +128,9 @@ To update, disable or uninstall the plugin, use the `/plugin` menu.
 
 The installed version shows next to the panel's title (`v0.3.0`). What changed from one version to the next is in [CHANGELOG.md](CHANGELOG.md), and on the [releases page](https://github.com/Happykiller/claude-cockpit/releases).
 
-When a newer version is released, the cockpit says so: `v0.3.0 → v0.4.0` beside the title, and a toast, once. With auto-update on (step 4 above), Claude Code installs it by itself. Otherwise, run `claude plugin update cockpit@claude-cockpit`, then `/reload-plugins`.
+When a newer version is released, the cockpit says so: `v0.3.0 → v0.4.0` beside the title, and a toast, once. With auto-update on (step 4 above), Claude Code installs it by itself. Otherwise, run `/cockpit update`, then `/reload-plugins`.
+
+`/reload-plugins` alone loads only what is already on disk: it does not fetch a new version.
 
 ## How it works
 
@@ -141,7 +144,7 @@ The cockpit is a Claude Code **mod**: a hooks module (`hooks/register.tsx`) that
 | Background work | `classic.Stop` (`background_tasks`), `SubagentStart` / `SubagentStop`, background `Bash` calls, task-end notifications (`prompt.submit`), `$.agent.list()` |
 | The plan | its own tools `mcp__cockpit__plan` / `mcp__cockpit__step`, plus `TodoWrite` and the task tools |
 
-The calibration samples (the last 60 measured steps) the latest finished plans (the last 40, all sessions together, each tagged with its session) and the panel sections you folded are kept in the plugin's local store, under your Claude Code configuration directory. **Nothing about you or your sessions is sent anywhere.** The only request the cockpit makes is to the GitHub API, at most once a day, to read the latest release's number. It does not make it when `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set.
+The calibration samples (the last 60 measured steps) the latest finished plans (the last 40, all sessions together, each tagged with its session) and the panel sections you folded are kept in the plugin's local store, under your Claude Code configuration directory. **Nothing about you or your sessions is sent anywhere.** The only request the cockpit makes is to the GitHub API, at most once an hour, to read the latest release's number. It does not make it when `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set.
 
 ## Develop
 

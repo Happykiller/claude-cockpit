@@ -5,7 +5,7 @@ import type { Activity, BgTask, ContextParts, Memory, Plan, PlanSummary, StepSta
 import { addTask, addUsage, arriveMode, endedTasks, fmtDur, fmtRatio, fromTodos, isEnded, isNewer, measured, modeTracker, moveStep, ratioOf, readFooter, releaseOf, resumeBlocked, setPlan, settleFooter, summarize } from './model'
 import type { PlanInput, Usage } from './model'
 import { Band, Dock } from './view'
-import { CHANGELOG_URL, LATEST_RELEASE_URL, VERSION } from './version'
+import { CHANGELOG_URL, LATEST_RELEASE_URL, MARKETPLACE, PLUGIN_ID, VERSION } from './version'
 
 const PANE = 'cockpit'
 const FAST_MS = 140
@@ -27,9 +27,9 @@ const CLOSED = 'closed'
 const CYCLE = 'cycle'
 /** The latest release seen, when it was checked, and the one a toast announced. */
 const LATEST = 'latest'
-const CHECK_MS = 24 * 60 * 60_000
+const CHECK_MS = 60 * 60_000
 /** After a failed check, the next try. */
-const RETRY_MS = 60 * 60_000
+const RETRY_MS = 15 * 60_000
 const KEEP_SAMPLES = 60
 /** Every session writes to the same store: enough room that a busy one does not push out the others' plans. */
 const KEEP_PLANS = 40
@@ -296,7 +296,7 @@ function asMinutes(v: unknown): number | undefined {
 type Latest = { version?: string; checkedAt: number; toasted?: string }
 
 /**
- * Once a day at most, all sessions together: the latest GitHub Release. Newer
+ * Once an hour at most, all sessions together: the latest GitHub Release. Newer
  * than the one running, it shows beside the title, and a toast says it once.
  */
 async function checkUpdate($: EngineInterface, now: number) {
@@ -315,10 +315,36 @@ async function checkUpdate($: EngineInterface, now: number) {
   const latest = seen.version !== undefined && isNewer(VERSION, seen.version) ? seen.version : undefined
   if (latest && seen.toasted !== latest) {
     seen = { ...seen, toasted: latest }
-    $.ui.toast(`Cockpit ${latest} est disponible · /cockpit version`)
+    $.ui.toast(`Cockpit ${latest} est disponible · /cockpit update`)
   }
   await $.store.set(LATEST, seen)
   if ((await read($, activity)).latest !== latest) await update($, activity, x => ({ ...x, latest }))
+}
+
+/**
+ * `/cockpit update`: the two `claude plugin` commands a terminal would run.
+ * The new version loads on /reload-plugins; the session keeps this one till then.
+ */
+async function selfUpdate($: EngineInterface): Promise<string> {
+  const byHand = `Dans un terminal : claude plugin marketplace update ${MARKETPLACE} && claude plugin update ${PLUGIN_ID}`
+  const said = (r: { stdout: string; stderr: string }) =>
+    (r.stdout + '\n' + r.stderr).replace(/\x1b\[[0-9;]*m/g, '').split('\n').map(l => l.trim()).filter(Boolean).pop() ?? ''
+  try {
+    $.ui.toast('Cockpit : recherche de la dernière version…')
+    const market = await $.process.run(['claude', 'plugin', 'marketplace', 'update', MARKETPLACE], { timeoutMs: 120_000 })
+    if (market.exitCode !== 0) return `Cockpit : la marketplace n'a pas pu être mise à jour (${said(market)}).\n${byHand}`
+    const plugin = await $.process.run(['claude', 'plugin', 'update', PLUGIN_ID], { timeoutMs: 120_000 })
+    if (plugin.exitCode !== 0) return `Cockpit : la mise à jour a échoué (${said(plugin)}).\n${byHand}`
+    nextCheck = 0
+    if (/already/i.test(plugin.stdout)) {
+      const onDisk = releaseOf(/\((\d+\.\d+\.\d+)\)/.exec(plugin.stdout)?.[1])
+      if (!onDisk) return 'Cockpit : déjà à jour.'
+      return onDisk === VERSION ? `Cockpit : ${VERSION} est la dernière version.` : `Cockpit : ${onDisk} est déjà installée. Lance /reload-plugins pour la charger.`
+    }
+    return `${said(plugin).replace(/\s*Restart to apply changes\.?$/i, '')}\nLance /reload-plugins pour charger la nouvelle version.`
+  } catch (err) {
+    return `Cockpit : la mise à jour n'a pas pu se lancer (${err instanceof Error ? err.message : String(err)}).\n${byHand}`
+  }
 }
 
 export const register: Register = on => {
@@ -330,7 +356,7 @@ export const register: Register = on => {
     void $.clock.now().then(now => checkUpdate($, now)).catch(() => undefined)
     await $.command.register({
       name: 'cockpit',
-      description: 'Ouvre le cockpit : activité de la session et frise du plan (« /cockpit reset » efface le plan, « /cockpit version » donne la version)',
+      description: 'Ouvre le cockpit : activité de la session et frise du plan (« /cockpit reset » efface le plan, « /cockpit version » donne la version, « /cockpit update » met à jour)',
     })
     await $.tool.register({
       name: 'plan',
@@ -391,11 +417,12 @@ export const register: Register = on => {
     if (arg === 'version') {
       const { latest } = await read($, activity)
       const how = latest
-        ? `\nLa ${latest} est disponible : \`claude plugin update cockpit@claude-cockpit\`, puis /reload-plugins.`
+        ? `\nLa ${latest} est disponible : /cockpit update, puis /reload-plugins.`
         : ''
       const auto = '\nMise à jour automatique : /plugin → Marketplaces → claude-cockpit → Enable auto-update.'
       return { text: `Cockpit ${VERSION} · nouveautés : ${CHANGELOG_URL}${how}${auto}` }
     }
+    if (arg === 'update') return { text: await selfUpdate($) }
     if (arg === 'close') {
       await $.ui.close({ id: PANE })
       return { text: 'Cockpit fermé.' }

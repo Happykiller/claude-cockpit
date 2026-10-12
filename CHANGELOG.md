@@ -6,6 +6,16 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-12
+
+### Added
+
+- `/cockpit update` updates the cockpit from inside a session: it runs `claude plugin marketplace update` and `claude plugin update`, then says to run `/reload-plugins`. The toast for a new version points to it.
+
+### Changed
+
+- The cockpit checks for a new release every hour instead of every day, so a version released the same day is announced the same day.
+
 ## [0.3.2] - 2026-10-12
 
 ### Fixed
@@ -71,7 +81,8 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 - The plan as a timeline, from Claude's own tools `mcp__cockpit__plan` and `mcp__cockpit__step`, and from `TodoWrite` and `TaskCreate` lists.
 - Colors taken from the terminal's theme.
 
-[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.2.0...v0.3.0

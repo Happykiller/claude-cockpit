@@ -121,6 +121,7 @@ Rien à faire : une section du prompt système demande à Claude de déclarer un
 | `/cockpit reset` | Efface le plan en cours |
 | `/cockpit close` | Ferme le panneau |
 | `/cockpit version` | Affiche la version installée et le lien vers le journal des versions |
+| `/cockpit update` | Met le cockpit à la dernière version (les deux commandes `claude plugin` qu'on lancerait dans un terminal) ; `/reload-plugins` la charge ensuite |
 
 Le cockpit suit aussi les listes `TodoWrite` et `TaskCreate` / `TaskUpdate` quand une session s'en sert.
 
@@ -130,7 +131,9 @@ Pour mettre à jour, désactiver ou désinstaller le plugin, passe par le menu `
 
 La version installée s'affiche à côté du titre du panneau (`v0.3.0`). Ce qui change d'une version à l'autre est dans [CHANGELOG.md](CHANGELOG.md), en anglais, et sur la [page des releases](https://github.com/Happykiller/claude-cockpit/releases).
 
-Quand une version plus récente sort, le cockpit le signale : `v0.3.0 → v0.4.0` à côté du titre, et un toast, une seule fois. Avec la mise à jour automatique (étape 4 plus haut), Claude Code l'installe tout seul. Sinon, lance `claude plugin update cockpit@claude-cockpit`, puis `/reload-plugins`.
+Quand une version plus récente sort, le cockpit le signale : `v0.3.0 → v0.4.0` à côté du titre, et un toast, une seule fois. Avec la mise à jour automatique (étape 4 plus haut), Claude Code l'installe tout seul. Sinon, lance `/cockpit update`, puis `/reload-plugins`.
+
+`/reload-plugins` seul ne charge que ce qui est déjà sur le disque : il ne va pas chercher de nouvelle version.
 
 ## Comment ça marche
 
@@ -149,7 +152,7 @@ Le cockpit garde dans le store local du plugin, sous ton dossier de configuratio
 - les derniers plans finis : les 40 derniers, toutes sessions confondues, chacun marqué de sa session ;
 - les sections du panneau que tu as repliées.
 
-**Rien sur toi ni sur tes sessions n'est envoyé nulle part.** La seule requête du cockpit va à l'API GitHub, au plus une fois par jour, pour lire le numéro de la dernière release. Il ne la fait pas quand `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` est défini.
+**Rien sur toi ni sur tes sessions n'est envoyé nulle part.** La seule requête du cockpit va à l'API GitHub, au plus une fois par heure, pour lire le numéro de la dernière release. Il ne la fait pas quand `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` est défini.
 
 ## Développer
 

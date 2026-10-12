@@ -529,3 +529,33 @@ test('la réponse de l’opérateur débloque l’étape', async ($, on) => {
   expect(await dock.find({ text: /code 2FA envoyé/ })).toBeDefined()
   await dock.unmount()
 })
+
+test('/cockpit update lance les deux commandes de claude plugin, et dit quoi faire ensuite', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  quiet(on)
+  mock.store(on)
+  const ran: string[] = []
+  let answer = '✔ Plugin "cockpit" updated from 0.3.1 to 9.0.0 for scope user. Restart to apply changes.'
+  on('process.run', (_$, e) => {
+    ran.push(e.argv.join(' '))
+    const stdout = e.argv[2] === 'marketplace' ? '✔ Successfully updated marketplace: claude-cockpit' : answer
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  const run = async () => ((await $.command.run({ command: 'cockpit', args: 'update' })) as { text: string }).text
+  const text = await run()
+  expect(ran).toEqual(['claude plugin marketplace update claude-cockpit', 'claude plugin update cockpit@claude-cockpit'])
+  expect(text).toContain('updated from 0.3.1 to 9.0.0')
+  expect(text).not.toContain('Restart')
+  expect(text).toContain('/reload-plugins')
+  answer = '✔ cockpit is already at the latest version (9.0.0).'
+  expect(await run()).toBe('Cockpit : 9.0.0 est déjà installée. Lance /reload-plugins pour la charger.')
+})
+
+test('/cockpit update sans la commande claude donne la marche à suivre', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  quiet(on)
+  mock.store(on)
+  on('process.run', () => { throw new Error('claude: command not found') })
+  const res = (await $.command.run({ command: 'cockpit', args: 'update' })) as { text: string }
+  expect(res.text).toContain('claude plugin update cockpit@claude-cockpit')
+})
