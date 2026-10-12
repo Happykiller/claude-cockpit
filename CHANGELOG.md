@@ -6,6 +6,13 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-12
+
+### Fixed
+
+- A blocked step no longer stays "waiting for the operator" once you have answered. Your next prompt puts it back in progress, and Claude moving on to a later step closes the steps it left running or blocked.
+- The time a step spends waiting for you is left out of its measured time, so a long wait no longer skews the calibration of Claude's estimates.
+
 ## [0.3.0] - 2026-10-12
 
 ### Added
@@ -53,7 +60,8 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 - The plan as a timeline, from Claude's own tools `mcp__cockpit__plan` and `mcp__cockpit__step`, and from `TodoWrite` and `TaskCreate` lists.
 - Colors taken from the terminal's theme.
 
-[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Happykiller/claude-cockpit/releases/tag/v0.1.0

@@ -455,3 +455,38 @@ test('une version publiée plus récente s’annonce à côté du titre, et un t
   expect(asked).toHaveLength(1)
   expect(toasts.filter(t => t.includes('9.0.0'))).toHaveLength(1)
 })
+
+test('passer à la suite clôt l’étape restée bloquée, et l’attente de l’opérateur ne compte pas au calibrage', () => {
+  let plan = setPlan(null, { title: 'P', steps: [{ title: 'A', estimate_min: 3 }, { title: 'B', estimate_min: 15 }, { title: 'C', estimate_min: 20 }] }, T0)
+  plan = moveStep(plan, 0, 'in_progress', T0)
+  plan = moveStep(plan, 0, 'blocked', T0 + 2 * MIN)
+  // Claude reprend sans rouvrir A : il attaque B six heures plus tard.
+  const before = plan
+  plan = moveStep(plan, 1, 'in_progress', T0 + 362 * MIN)
+  expect(plan.steps[0]).toMatchObject({ status: 'completed', endedAt: T0 + 362 * MIN, waitedMs: 360 * MIN })
+  expect(plan.steps[0]!.blockedAt).toBeUndefined()
+  // 362 min d'horloge, dont 360 d'attente : 2 min mesurées.
+  expect(measured(before, plan)).toEqual([[3, 2]])
+  // Une étape plus loin qui tournait repasse en attente, celles d'avant ne bougent pas.
+  plan = moveStep(plan, 2, 'in_progress', T0 + 370 * MIN)
+  expect(plan.steps.map(s => s.status)).toEqual(['completed', 'completed', 'in_progress'])
+})
+
+test('la réponse de l’opérateur débloque l’étape', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  quiet(on)
+  mock.store(on)
+  on('classic.UserPromptSubmit', () => ({}))
+  await $.tool.call({ tool: 'mcp__cockpit__plan', title: 'Lot', steps: [{ title: 'Un', estimate_min: 3 }, { title: 'Deux', estimate_min: 10 }] })
+  await $.tool.call({ tool: 'mcp__cockpit__step', step: 1, status: 'in_progress' })
+  await $.tool.call({ tool: 'mcp__cockpit__step', step: 1, status: 'blocked', note: 'code 2FA envoyé' })
+  await clock.advance(30 * MIN)
+  const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 50, isFullscreen: true } })
+  await dock.drawn()
+  expect(await dock.find({ text: /attend une décision de l'opérateur/ })).toBeDefined()
+  await $.classic.UserPromptSubmit({ prompt: 'c’est fait' })
+  await dock.drawn()
+  expect(await dock.find({ text: /attend une décision de l'opérateur/ })).toBeUndefined()
+  expect(await dock.find({ text: /code 2FA envoyé/ })).toBeDefined()
+  await dock.unmount()
+})

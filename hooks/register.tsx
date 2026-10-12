@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
 import type { Activity, BgTask, ContextParts, Memory, Plan, PlanSummary, StepStatus } from '../types'
-import { addTask, addUsage, arriveMode, endedTasks, fmtDur, fmtRatio, fromTodos, isEnded, isNewer, measured, modeTracker, moveStep, ratioOf, readFooter, releaseOf, setPlan, settleFooter, summarize } from './model'
+import { addTask, addUsage, arriveMode, endedTasks, fmtDur, fmtRatio, fromTodos, isEnded, isNewer, measured, modeTracker, moveStep, ratioOf, readFooter, releaseOf, resumeBlocked, setPlan, settleFooter, summarize } from './model'
 import type { PlanInput, Usage } from './model'
 import { Band, Dock } from './view'
 import { CHANGELOG_URL, LATEST_RELEASE_URL, VERSION } from './version'
@@ -38,7 +38,7 @@ const STATUSES: readonly StepStatus[] = ['pending', 'in_progress', 'completed', 
 
 const GUIDE = `## Cockpit — plan d'exécution
 
-L'opérateur suit ton avancement dans un cockpit affiché à côté de la conversation. Dès qu'un travail compte au moins trois étapes ou durera plus de quelques minutes, déclare-le d'abord avec \`mcp__cockpit__plan\` : une étape par jalon vérifiable, chacune avec ton estimation honnête de sa durée en minutes (\`estimate_min\`). Puis signale chaque transition avec \`mcp__cockpit__step\` : \`in_progress\` au moment où tu attaques l'étape (une étape close sans avoir été ouverte n'est pas chronométrée), \`completed\` quand elle est tenue, \`blocked\` quand tu attends l'opérateur, avec une note courte sur ce que tu fais. Si une estimation change nettement en cours de route, renvoie-la. Ces appels ne remplacent pas les comptes rendus à l'opérateur, et un sous-agent ne les fait pas.`
+L'opérateur suit ton avancement dans un cockpit affiché à côté de la conversation. Dès qu'un travail compte au moins trois étapes ou durera plus de quelques minutes, déclare-le d'abord avec \`mcp__cockpit__plan\` : une étape par jalon vérifiable, chacune avec ton estimation honnête de sa durée en minutes (\`estimate_min\`). Puis signale chaque transition avec \`mcp__cockpit__step\` : \`in_progress\` au moment où tu attaques l'étape (une étape close sans avoir été ouverte n'est pas chronométrée), \`completed\` quand elle est tenue, \`blocked\` quand tu attends l'opérateur, avec une note courte sur ce que tu fais. Quand l'opérateur a répondu, l'étape bloquée repart en \`in_progress\` ; clos-la avant de passer à la suivante. Si une estimation change nettement en cours de route, renvoie-la. Ces appels ne remplacent pas les comptes rendus à l'opérateur, et un sous-agent ne les fait pas.`
 
 // Module variables: what the next tick folds into the state. A reload loses
 // them and the next event refills them; the state itself is the host's.
@@ -447,6 +447,11 @@ export const register: Register = on => {
 
   on('classic.UserPromptSubmit', async ($, e, next) => {
     await noteMode($, e.permission_mode)
+    if (e.agent_id === undefined) {
+      const current = await read($, plan)
+      const resumed = current && resumeBlocked(current, await $.clock.now())
+      if (resumed && resumed !== current) await savePlan($, current, resumed)
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
   on('classic.PostToolUse', async ($, e, next) => {

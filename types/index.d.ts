@@ -9,6 +9,10 @@ export type Step = {
   endedAt?: number
   /** Closed without ever being opened: its start is a guess, its time not measured. */
   untimed?: true
+  /** Since when it waits for the operator, while blocked. */
+  blockedAt?: number
+  /** The time it spent waiting for the operator, left out of its measured time. */
+  waitedMs?: number
   note?: string
   /** The notes it had before this one, oldest first: the step's sub-steps. */
   done?: string[]

@@ -284,11 +284,28 @@ export function setPlan(prev: Plan | null, input: PlanInput, now: number): Plan 
  * Moves one step. A step closed without having been opened starts where the
  * last one ended, and says its time is a guess (`untimed`).
  */
+/** Ends a step's wait for the operator; the wait stays out of its measured time. */
+function unblock(s: Step, now: number) {
+  if (s.blockedAt !== undefined) s.waitedMs = (s.waitedMs ?? 0) + Math.max(0, now - s.blockedAt)
+  delete s.blockedAt
+}
+
 export function moveStep(plan: Plan, index: number, status: StepStatus, now: number, extra: { note?: string; estimateMin?: number } = {}): Plan {
   const steps = plan.steps.map(s => ({ ...s }))
   const step = steps[index]
   if (!step) return plan
   const lastEnd = Math.max(plan.createdAt, ...steps.map(s => s.endedAt ?? 0))
+  if (status === 'in_progress' || status === 'completed' || status === 'blocked') {
+    // Moving on to a step closes those before it left running or blocked.
+    steps.slice(0, index).forEach(s => {
+      if (s.status !== 'in_progress' && s.status !== 'blocked') return
+      unblock(s, now)
+      s.status = 'completed'
+      s.endedAt = now
+    })
+  }
+  if (status === 'blocked') step.blockedAt ??= now
+  else unblock(step, now)
   if (status === 'in_progress' || status === 'blocked') {
     if (step.untimed) {
       step.startedAt = now
@@ -298,7 +315,7 @@ export function moveStep(plan: Plan, index: number, status: StepStatus, now: num
     step.endedAt = undefined
   }
   if (status === 'in_progress') {
-    for (const other of steps) if (other !== step && other.status === 'in_progress') other.status = 'pending'
+    for (const other of steps.slice(index + 1)) if (other.status === 'in_progress') other.status = 'pending'
   }
   if (status === 'completed' || status === 'skipped') {
     if (step.startedAt === undefined) {
@@ -315,6 +332,20 @@ export function moveStep(plan: Plan, index: number, status: StepStatus, now: num
   if (extra.estimateMin !== undefined) step.estimateMin = extra.estimateMin
   const isFinished = steps.some(s => s.status === 'completed') && steps.every(s => s.status === 'completed' || s.status === 'skipped')
   return { ...plan, steps, finishedAt: isFinished ? (plan.finishedAt ?? now) : undefined }
+}
+
+/** The operator answered: a blocked step goes on. */
+export function resumeBlocked(plan: Plan, now: number): Plan {
+  if (!plan.steps.some(s => s.status === 'blocked')) return plan
+  return {
+    ...plan,
+    steps: plan.steps.map(s => {
+      if (s.status !== 'blocked') return s
+      const t = { ...s, status: 'in_progress' as const }
+      unblock(t, now)
+      return t
+    }),
+  }
 }
 
 type Todo = { content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm?: string }
@@ -393,7 +424,7 @@ export function measured(prev: Plan | null, next: Plan): [number, number][] {
     if (s.status !== 'completed' || s.untimed || s.estimateMin === undefined || s.startedAt === undefined || s.endedAt === undefined) return
     const was = prev?.steps.find(p => p.id === s.id)
     if (was?.status === 'completed') return
-    out.push([s.estimateMin, (s.endedAt - s.startedAt) / MIN])
+    out.push([s.estimateMin, (s.endedAt - s.startedAt - (s.waitedMs ?? 0)) / MIN])
   })
   return out
 }
