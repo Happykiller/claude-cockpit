@@ -295,15 +295,6 @@ export function moveStep(plan: Plan, index: number, status: StepStatus, now: num
   const step = steps[index]
   if (!step) return plan
   const lastEnd = Math.max(plan.createdAt, ...steps.map(s => s.endedAt ?? 0))
-  if (status === 'in_progress' || status === 'completed' || status === 'blocked') {
-    // Moving on to a step closes those before it left running or blocked.
-    steps.slice(0, index).forEach(s => {
-      if (s.status !== 'in_progress' && s.status !== 'blocked') return
-      unblock(s, now)
-      s.status = 'completed'
-      s.endedAt = now
-    })
-  }
   if (status === 'blocked') step.blockedAt ??= now
   else unblock(step, now)
   if (status === 'in_progress' || status === 'blocked') {
@@ -315,7 +306,9 @@ export function moveStep(plan: Plan, index: number, status: StepStatus, now: num
     step.endedAt = undefined
   }
   if (status === 'in_progress') {
-    for (const other of steps.slice(index + 1)) if (other.status === 'in_progress') other.status = 'pending'
+    // One step runs at a time; one left running goes back to wait, not done.
+    // A blocked step stays blocked: its decision is still to come.
+    for (const other of steps) if (other !== step && other.status === 'in_progress') other.status = 'pending'
   }
   if (status === 'completed' || status === 'skipped') {
     if (step.startedAt === undefined) {

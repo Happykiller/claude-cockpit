@@ -6,6 +6,17 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-12
+
+### Fixed
+
+- A blocked step stays blocked while work goes on with another step: a step waiting for a decision is not done ([#2](https://github.com/Happykiller/claude-cockpit/issues/2)). This takes back part of 0.3.1: moving on to another step no longer closes the earlier ones. A step left running goes back to waiting, as in 0.2.0. Your next prompt still puts a blocked step back in progress.
+- The summary of the folded steps no longer counts a time for steps closed without having been opened. It shows `—` when they are the only ones ([#1](https://github.com/Happykiller/claude-cockpit/issues/1)).
+
+### Changed
+
+- A blocked step shows `⏸` in amber, the pause Claude Code's own footer draws, instead of `✗` in coral, which read as a failure ([#3](https://github.com/Happykiller/claude-cockpit/issues/3)).
+
 ## [0.3.1] - 2026-10-12
 
 ### Fixed
@@ -60,7 +71,8 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 - The plan as a timeline, from Claude's own tools `mcp__cockpit__plan` and `mcp__cockpit__step`, and from `TodoWrite` and `TaskCreate` lists.
 - Colors taken from the terminal's theme.
 
-[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.1.0...v0.2.0

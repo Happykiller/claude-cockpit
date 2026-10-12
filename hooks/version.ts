@@ -1,5 +1,5 @@
 /** The cockpit's version: keep it equal to `.claude-plugin/plugin.json`'s and to the latest CHANGELOG.md entry. */
-export const VERSION = '0.3.1'
+export const VERSION = '0.3.2'
 
 export const CHANGELOG_URL = 'https://github.com/Happykiller/claude-cockpit/blob/master/CHANGELOG.md'
 

@@ -41,6 +41,8 @@ const WH = 'ansi256(15)'
 const TRACK = 'ansi256(8)'
 /** The empty part of a gauge: a light shade a cut above the frames, so the gauge keeps its length. */
 const EMPTY = '░'
+/** A step that waits for the operator: paused, as Claude Code's own footer draws it, not failed. */
+const WAIT = '⏸'
 const EMPTY_TONE = DM
 
 /** Cells kept clear on each side of the panel's body. */
@@ -339,7 +341,7 @@ function idColor(s: Step, isCurrent: boolean): string {
   return DM
 }
 
-/** A step's stretch of the track: lit when done, filling while it runs, coral past its estimate or blocked. */
+/** A step's stretch of the track: lit when done, filling while it runs, coral past its estimate, amber while it waits. */
 function segment(T: T, s: Step, span: Span, g: number, d: ViewData) {
   if (g <= 0) return null
   if (s.status === 'completed') return <T color={OK}>{'━'.repeat(g)}</T>
@@ -348,7 +350,7 @@ function segment(T: T, s: Step, span: Span, g: number, d: ViewData) {
   const len = span.end - span.start
   const filled = Math.max(1, Math.round((len > 0 ? Math.min(1, (d.now - span.start) / len) : 1) * g))
   const isOver = s.estimateMin !== undefined && d.now - span.start > s.estimateMin * MIN
-  const base = s.status === 'blocked' || isOver ? HOT : ACC
+  const base = s.status === 'blocked' ? WARN : isOver ? HOT : ACC
   const spark = d.n % (filled + 3)
   const out: RenderChildren[] = []
   for (let k = 0; k < filled; k++) out.push(<T bold={k === spark} color={k === spark ? WH : base}>━</T>)
@@ -360,7 +362,7 @@ function node(T: T, s: Step, isCurrent: boolean, blink: boolean) {
   switch (s.status) {
     case 'completed': return <T bold color={OK}>●</T>
     case 'skipped': return <T color={FA}>⊘</T>
-    case 'blocked': return <T bold color={blink ? HOT : WH}>✗</T>
+    case 'blocked': return <T bold color={blink ? WARN : WH}>{WAIT}</T>
     case 'in_progress': return <T bold color={blink ? ACC : WH}>◉</T>
     default: return <T color={isCurrent ? ACC : DM}>○</T>
   }
@@ -425,7 +427,7 @@ function stepIcon(T: T, s: Step, n: number) {
   switch (s.status) {
     case 'completed': return <T color={OK}>✓</T>
     case 'skipped': return <T color={FA}>⊘</T>
-    case 'blocked': return <T bold color={HOT}>✗</T>
+    case 'blocked': return <T bold color={WARN}>{WAIT}</T>
     case 'in_progress': return <T bold color={ACC}>{SPINNER[n % SPINNER.length]}</T>
     default: return <T color={DM}>○</T>
   }
@@ -639,7 +641,9 @@ function DockPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
   const t = totals(plan, d.now)
   const doneIdx = plan.steps.map((s, i) => (s.status === 'completed' || s.status === 'skipped' ? i : -1)).filter(i => i >= 0 && i < (t.current < 0 ? Infinity : t.current))
   const hidden = doneIdx.length > MAX_DONE_SHOWN ? doneIdx.slice(0, doneIdx.length - MAX_DONE_SHOWN) : []
-  const hiddenMs = hidden.reduce((sum, i) => sum + stepElapsed(plan.steps[i]!, d.now), 0)
+  // Only the steps on the clock: one closed unopened has no time of its own.
+  const timed = hidden.map(i => plan.steps[i]!).filter(s => !s.untimed)
+  const hiddenMs = timed.reduce((sum, s) => sum + stepElapsed(s, d.now), 0)
   const allDone = t.done === t.total && t.total > 0
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -655,7 +659,7 @@ function DockPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
           {hidden.length > 0 && (
             <Box justifyContent="space-between">
               <Text color={DM}><Text color={ACC}>✓</Text>  … {hidden.length} étapes faites</Text>
-              <Box flexShrink={0}><Text color={DM}>{fmtDur(hiddenMs)}</Text></Box>
+              <Box flexShrink={0}><Text color={DM}>{timed.length > 0 ? fmtDur(hiddenMs) : '—'}</Text></Box>
             </Box>
           )}
           {plan.steps.map((s, i) => {
@@ -746,7 +750,7 @@ function PlanLine({ E, d, plan }: { E: Els; d: ViewData; plan: Plan }) {
 function Current({ E, d, s, i, W }: { E: Els; d: ViewData; s: Step; i: number; W: number }) {
   const { Box, Text } = E
   const isBlocked = s.status === 'blocked'
-  const frame = isBlocked ? HOT : ACC
+  const frame = isBlocked ? WARN : ACC
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={frame} paddingX={1} key={`cur-${i}`}>
       <Box justifyContent="space-between">
@@ -754,7 +758,7 @@ function Current({ E, d, s, i, W }: { E: Els; d: ViewData; s: Step; i: number; W
         <Box flexShrink={0} marginLeft={1}>{stepTime(Text, s, d.now)}</Box>
       </Box>
       {isBlocked
-        ? <Text bold color={d.n % 8 < 4 ? HOT : DM}>⚑ attend une décision de l'opérateur</Text>
+        ? <Text bold color={d.n % 8 < 4 ? WARN : DM}>attend une décision de l'opérateur</Text>
         : <StepBar T={Text} s={s} now={d.now} n={d.n} width={W - 12} />}
       {(s.done ?? []).map(note => <Text wrap="truncate-end"><Text color={ACC}>✓</Text> <Text color={DM}>{note}</Text></Text>)}
       {s.note && <Text wrap="truncate-end"><Text bold color={ACC}>›</Text> <Text color={WH}>{s.note}</Text></Text>}
@@ -841,9 +845,9 @@ function BandPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
       )}
       {cur && (
         <Text wrap="truncate-end">
-          <Text bold color={cur.status === 'blocked' ? HOT : ACC}>› </Text>
+          <Text bold color={cur.status === 'blocked' ? WARN : ACC}>› </Text>
           {!isColumns && <Text bold color={WH}>{cur.id} {cur.title}  </Text>}
-          {cur.status === 'blocked' ? <Text bold color={HOT}>attend une décision de l'opérateur</Text> : <Text color={WH}>{cur.note ?? ''}</Text>}
+          {cur.status === 'blocked' ? <Text bold color={WARN}>{WAIT} attend une décision de l'opérateur</Text> : <Text color={WH}>{cur.note ?? ''}</Text>}
           {(() => {
             const next = plan.steps.slice(t.current + 1).find(s => s.status === 'pending')
             return next ? <Text color={DM}>{`   ·   ensuite : ${next.title}`}</Text> : null

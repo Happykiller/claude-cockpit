@@ -456,20 +456,59 @@ test('une version publiée plus récente s’annonce à côté du titre, et un t
   expect(toasts.filter(t => t.includes('9.0.0'))).toHaveLength(1)
 })
 
-test('passer à la suite clôt l’étape restée bloquée, et l’attente de l’opérateur ne compte pas au calibrage', () => {
+test('une étape bloquée le reste quand le travail avance ailleurs, et son attente ne compte pas au calibrage (#2)', () => {
   let plan = setPlan(null, { title: 'P', steps: [{ title: 'A', estimate_min: 3 }, { title: 'B', estimate_min: 15 }, { title: 'C', estimate_min: 20 }] }, T0)
   plan = moveStep(plan, 0, 'in_progress', T0)
   plan = moveStep(plan, 0, 'blocked', T0 + 2 * MIN)
-  // Claude reprend sans rouvrir A : il attaque B six heures plus tard.
+  // B est indépendante : le travail avance sans que la décision soit rendue.
+  plan = moveStep(plan, 1, 'in_progress', T0 + 3 * MIN)
+  plan = moveStep(plan, 1, 'completed', T0 + 20 * MIN)
+  expect(plan.steps.map(s => s.status)).toEqual(['blocked', 'completed', 'pending'])
+  expect(totals(plan, T0 + 20 * MIN).done).toBe(1)
+  // La décision tombe six heures après le blocage : 2 min de travail, 2 de plus ensuite.
   const before = plan
-  plan = moveStep(plan, 1, 'in_progress', T0 + 362 * MIN)
-  expect(plan.steps[0]).toMatchObject({ status: 'completed', endedAt: T0 + 362 * MIN, waitedMs: 360 * MIN })
-  expect(plan.steps[0]!.blockedAt).toBeUndefined()
-  // 362 min d'horloge, dont 360 d'attente : 2 min mesurées.
-  expect(measured(before, plan)).toEqual([[3, 2]])
-  // Une étape plus loin qui tournait repasse en attente, celles d'avant ne bougent pas.
+  plan = moveStep(plan, 0, 'in_progress', T0 + 362 * MIN)
+  plan = moveStep(plan, 0, 'completed', T0 + 364 * MIN)
+  expect(plan.steps[0]).toMatchObject({ waitedMs: 360 * MIN })
+  expect(measured(before, plan)).toEqual([[3, 4]])
+  // Une étape laissée en cours quand une autre démarre repart en attente, pas faite.
   plan = moveStep(plan, 2, 'in_progress', T0 + 370 * MIN)
-  expect(plan.steps.map(s => s.status)).toEqual(['completed', 'completed', 'in_progress'])
+  plan = moveStep(plan, 1, 'in_progress', T0 + 375 * MIN)
+  expect(plan.steps.map(s => s.status)).toEqual(['completed', 'in_progress', 'pending'])
+})
+
+test('le résumé des étapes repliées ne compte pas le temps des étapes non chronométrées (#1)', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  quiet(on)
+  mock.store(on)
+  const steps = Array.from({ length: 10 }, (_, i) => ({ title: `Étape ${i + 1}`, estimate_min: 60 }))
+  await $.tool.call({ tool: 'mcp__cockpit__plan', title: 'Lot', steps })
+  for (let i = 1; i <= 6; i++) {
+    await clock.advance(MIN)
+    await $.tool.call({ tool: 'mcp__cockpit__step', step: i, status: 'completed' })
+  }
+  await $.tool.call({ tool: 'mcp__cockpit__step', step: 7, status: 'in_progress' })
+  const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
+  await dock.drawn()
+  const row = await dock.find({ text: /… 2 étapes faites/ })
+  expect(row).toBeDefined()
+  expect(await dock.find({ type: 'Text', text: /^—$/ })).toBeDefined()
+  // Avant : les deux étapes repliées comptaient la minute devinée de chacune.
+  expect(await dock.find({ type: 'Text', text: /^2 min$/ })).toBeUndefined()
+  await dock.unmount()
+})
+
+test('une étape bloquée s’affiche en pause, pas en échec (#3)', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  quiet(on)
+  mock.store(on)
+  await $.tool.call({ tool: 'mcp__cockpit__plan', title: 'Lot', steps: [{ title: 'Un', estimate_min: 3 }, { title: 'Deux', estimate_min: 10 }] })
+  await $.tool.call({ tool: 'mcp__cockpit__step', step: 1, status: 'blocked' })
+  const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
+  await dock.drawn()
+  expect(await dock.find({ text: /✗/ })).toBeUndefined()
+  expect((await dock.find({ type: 'Text', text: /^⏸$/ }))?.props.color).toBe('ansi256(3)')
+  await dock.unmount()
 })
 
 test('la réponse de l’opérateur débloque l’étape', async ($, on) => {
