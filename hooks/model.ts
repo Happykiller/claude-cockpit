@@ -142,16 +142,108 @@ export function tone(pct: number | undefined): Tone {
   return pct < 90 ? 'warn' : 'hot'
 }
 
-/** The permission mode the prompt footer names, if it names one. */
-export function modeFromHint(text: string): string | undefined {
+/** How the footer spells each mode's pill, across the versions seen. */
+const MODE_PILLS: readonly [RegExp, string][] = [
+  [/\bbypass permissions\b/, 'bypassPermissions'],
+  [/\bauto mode\b/, 'auto'],
+  [/\b(?:auto-)?accept(?:ing)? edits\b/, 'acceptEdits'],
+  [/\bplan mode\b/, 'plan'],
+  [/\bdon'?t ask\b/, 'dontAsk'],
+  [/\b(?:manual|default) mode\b/, 'default'],
+]
+
+/**
+ * The mode a footer's pill names, if it shows one. The pill leads the line,
+ * so the earliest match wins over a mode named further on.
+ */
+export function pillOf(text: string): string | undefined {
   const t = text.toLowerCase()
-  if (t.includes('bypass')) return 'bypassPermissions'
-  if (t.includes('auto mode')) return 'auto'
-  if (t.includes('accept edits')) return 'acceptEdits'
-  if (t.includes('plan mode')) return 'plan'
-  if (t.includes("don't ask") || t.includes('dont ask')) return 'dontAsk'
-  if (t.includes('? for shortcuts')) return 'default'
-  return undefined
+  let best: { at: number; mode: string } | undefined
+  for (const [re, mode] of MODE_PILLS) {
+    const at = t.search(re)
+    if (at >= 0 && (!best || at < best.at)) best = { at, mode }
+  }
+  return best?.mode
+}
+
+// ── The permission mode, followed through shift+tab ───────────────────────
+//
+// As shift+tab moves on, the footer is read once more with the pill of the
+// mode it leaves (`plan mode on`), then at once without any pill: the flash
+// names the mode left, the cycle names the one entered. A pill still the
+// last read after FLASH_MS is the mode itself.
+
+/** The cycle shift+tab follows unless this person's own has been seen. */
+export const MODE_CYCLE: Readonly<Record<string, string>> = { default: 'acceptEdits', acceptEdits: 'plan', plan: 'auto', auto: 'default' }
+/** How soon the next read follows a pill when the pill was the line left behind. */
+export const FLASH_MS = 100
+
+export type ModeTracker = {
+  /** Each mode's successor under shift+tab, as seen so far. */
+  cycle: Record<string, string>
+  /** A pill read last, not yet known as a flash or the mode itself. */
+  pill?: { mode: string; at: number; text: string }
+  /** The mode shift+tab left last, until the mode it led to is known. */
+  left?: string
+}
+
+export function modeTracker(cycle?: Record<string, string>): ModeTracker {
+  return { cycle: { ...MODE_CYCLE, ...cycle } }
+}
+
+/** A mode known for sure: it ends a shift+tab, and teaches the cycle where it went. */
+export function arriveMode(tk: ModeTracker, mode: string): string {
+  if (tk.left !== undefined && tk.left !== mode) tk.cycle[tk.left] = mode
+  tk.left = undefined
+  return mode
+}
+
+function leaveMode(tk: ModeTracker, mode: string): string | undefined {
+  // The flash names the mode the previous shift+tab led to.
+  arriveMode(tk, mode)
+  tk.left = mode
+  return tk.cycle[mode]
+}
+
+/** One read of the footer's hint; the mode it settles, if it settles one. */
+export function readFooter(tk: ModeTracker, text: string, at: number): string | undefined {
+  let settled: string | undefined
+  const p = tk.pill
+  if (p && text !== p.text) {
+    tk.pill = undefined
+    settled = at - p.at <= FLASH_MS ? leaveMode(tk, p.mode) : arriveMode(tk, p.mode)
+  }
+  const pill = pillOf(text)
+  if (pill) {
+    if (!tk.pill) tk.pill = { mode: pill, at, text }
+  } else if (text.toLowerCase().includes('? for shortcuts')) {
+    settled = arriveMode(tk, 'default')
+  }
+  return settled
+}
+
+/** A pill nothing followed within FLASH_MS: the mode itself. */
+export function settleFooter(tk: ModeTracker, at: number): string | undefined {
+  const p = tk.pill
+  if (!p || at - p.at <= FLASH_MS) return undefined
+  tk.pill = undefined
+  return arriveMode(tk, p.mode)
+}
+
+// ── Versions ──────────────────────────────────────────────────────────────
+
+/** `v0.3.0` or `0.3.0` → `0.3.0`; undefined when it is not a release number. */
+export function releaseOf(tag: unknown): string | undefined {
+  const m = typeof tag === 'string' ? /^v?(\d+\.\d+\.\d+)$/.exec(tag.trim()) : null
+  return m?.[1]
+}
+
+/** Whether release `b` comes after release `a`. */
+export function isNewer(a: string, b: string): boolean {
+  const x = a.split('.').map(Number)
+  const y = b.split('.').map(Number)
+  for (let i = 0; i < 3; i++) if (y[i] !== x[i]) return (y[i] ?? 0) > (x[i] ?? 0)
+  return false
 }
 
 /** `(~20 min)`, `~1 h 30`, `[45min]` in a todo's text → minutes. */

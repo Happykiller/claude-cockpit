@@ -15,7 +15,7 @@ Un panneau latéral animé pour [Claude Code](https://claude.com/claude-code). P
 **La configuration**
 
 - **Modèle et effort** : `Opus 5.5`, `high / max`, relus à chaque requête.
-- **Mode d'exécution** : `default`, `accept edits`, `plan`, `auto`, `bypass`. Il change dès que tu appuies sur `shift+tab`.
+- **Mode d'exécution** : `default`, `accept edits`, `plan`, `auto`, `bypass`. Il suit `shift+tab` en moins d'une seconde.
 
 **Les statistiques**
 
@@ -96,6 +96,21 @@ Puis mets `"theme": "custom:cockpit-dark"` dans `~/.claude/settings.json`, ou ch
 
 **3. Lui laisser de la place.** La disposition dockée demande la disposition plein écran de Claude Code et au moins 110 colonnes. En dessous, c'est le bandeau.
 
+**4. Activer la mise à jour automatique.** Claude Code ne met à jour les marketplaces tierces que si tu le lui demandes. Lance `/plugin`, ouvre l'onglet **Marketplaces**, choisis `claude-cockpit`, puis **Enable auto-update**. Ou règle-le dans `~/.claude/settings.json` :
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "claude-cockpit": {
+      "source": { "source": "github", "repo": "Happykiller/claude-cockpit" },
+      "autoUpdate": true
+    }
+  }
+}
+```
+
+Claude Code récupère alors chaque nouvelle version en arrière-plan, quelques minutes après le début d'une session, et te propose de lancer `/reload-plugins`.
+
 ## Utilisation
 
 Rien à faire : une section du prompt système demande à Claude de déclarer un plan pour toute tâche de trois étapes ou plus, puis de signaler chaque étape au fil de l'eau. Tu peux aussi le lui demander : *« mets le plan dans le cockpit »*.
@@ -105,10 +120,17 @@ Rien à faire : une section du prompt système demande à Claude de déclarer un
 | `/cockpit` | Rouvre le panneau, si tu l'as fermé |
 | `/cockpit reset` | Efface le plan en cours |
 | `/cockpit close` | Ferme le panneau |
+| `/cockpit version` | Affiche la version installée et le lien vers le journal des versions |
 
 Le cockpit suit aussi les listes `TodoWrite` et `TaskCreate` / `TaskUpdate` quand une session s'en sert.
 
 Pour mettre à jour, désactiver ou désinstaller le plugin, passe par le menu `/plugin`.
+
+## Versions
+
+La version installée s'affiche à côté du titre du panneau (`v0.3.0`). Ce qui change d'une version à l'autre est dans [CHANGELOG.md](CHANGELOG.md), en anglais, et sur la [page des releases](https://github.com/Happykiller/claude-cockpit/releases).
+
+Quand une version plus récente sort, le cockpit le signale : `v0.3.0 → v0.4.0` à côté du titre, et un toast, une seule fois. Avec la mise à jour automatique (étape 4 plus haut), Claude Code l'installe tout seul. Sinon, lance `claude plugin update cockpit@claude-cockpit`, puis `/reload-plugins`.
 
 ## Comment ça marche
 
@@ -118,7 +140,7 @@ Le cockpit est un **mod** Claude Code : un module de hooks (`hooks/register.tsx`
 | --- | --- |
 | Modèle, effort, contexte et tokens de chaque requête (sous-agents compris pour les tokens) | le flux `turn.step` |
 | Limites, renouvellements, coût, répartition du contexte | `session.measure` et `$.session.usage()` |
-| Mode d'exécution | le `permission_mode` des hooks et l'indication du pied du prompt |
+| Mode d'exécution | le `permission_mode` des hooks et, entre deux tours, l'indication du pied du prompt : à chaque `shift+tab`, le pied est relu une fois avec le mode qu'on quitte, et le cockpit en déduit le mode suivant dans le cycle qu'il a observé |
 | Travail en fond | `classic.Stop` (`background_tasks`), `SubagentStart` / `SubagentStop`, les `Bash` lancés en fond, les notifications de fin de tâche (`prompt.submit`), `$.agent.list()` |
 | Le plan | ses outils `mcp__cockpit__plan` / `mcp__cockpit__step`, plus `TodoWrite` et les outils de tâches |
 
@@ -127,7 +149,7 @@ Le cockpit garde dans le store local du plugin, sous ton dossier de configuratio
 - les derniers plans finis : les 40 derniers, toutes sessions confondues, chacun marqué de sa session ;
 - les sections du panneau que tu as repliées.
 
-**Rien n'est envoyé nulle part.**
+**Rien sur toi ni sur tes sessions n'est envoyé nulle part.** La seule requête du cockpit va à l'API GitHub, au plus une fois par jour, pour lire le numéro de la dernière release. Il ne la fait pas quand `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` est défini.
 
 ## Développer
 
@@ -145,7 +167,16 @@ npx -y -p typescript@5.6.3 tsc -p .   # contrôle de types
 claude plugin validate .               # manifeste, marketplace, hooks
 claude plugin test .                   # tests/*.test.ts
 python3 docs/make_demo.py              # régénère les maquettes du README
+scripts/check-version.sh               # les trois numéros de version concordent
 ```
+
+Pour publier une version :
+
+1. Déplace les entrées `[Unreleased]` de `CHANGELOG.md` sous un nouveau titre `## [x.y.z] - date`, et ajoute son lien de comparaison en bas du fichier.
+2. Écris le même numéro dans `.claude-plugin/plugin.json` et `hooks/version.ts`, puis lance `scripts/check-version.sh`.
+3. Commite, pose le tag `vx.y.z`, et pousse le commit et le tag.
+
+Le tag lance `.github/workflows/release.yml`. Il vérifie que le tag et les trois numéros de version concordent, puis publie la Release GitHub avec la section du changelog de cette version. Les utilisateurs en mise à jour automatique reçoivent la version d'après le nouveau `plugin.json` de `master`, et les autres voient la release annoncée dans le panneau. Ne change donc la version que dans le commit que tu tagues.
 
 | Chemin | Rôle |
 | --- | --- |
@@ -154,6 +185,9 @@ python3 docs/make_demo.py              # régénère les maquettes du README
 | `hooks/view.tsx` | le dessin : panneau docké et bandeau |
 | `types/index.d.ts` | le contrat d'état (`PluginState`) |
 | `themes/cockpit-dark.json` | le thème sans teinte derrière le panneau |
+| `hooks/version.ts` | la version affichée dans le panneau |
+| `.github/workflows/release.yml` | publie la Release GitHub d'un tag |
+| `scripts/check-version.sh` | vérifie que le manifeste, le module et le journal des versions donnent le même numéro |
 | `docs/make_demo.py` | les maquettes SVG animées |
 
 ## Limites

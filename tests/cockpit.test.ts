@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { endedTasks, fmtDur, fromTodos, measured, modeFromHint, moveStep, parseEstimate, apportion, placeLabels, prettyModel, project, ratioOf, setPlan, spread, timeline, totals, MIN } from '../hooks/model'
+import { endedTasks, fmtDur, fromTodos, isNewer, measured, modeTracker, moveStep, pillOf, readFooter, releaseOf, settleFooter, parseEstimate, apportion, placeLabels, prettyModel, project, ratioOf, setPlan, spread, timeline, totals, MIN } from '../hooks/model'
 
 const T0 = Date.UTC(2026, 9, 10, 8, 0, 0)
 
@@ -29,11 +29,50 @@ test('les noms et les durées se lisent comme dans la maquette', async () => {
   expect(fmtDur(38 * MIN)).toBe('38 min')
   expect(fmtDur(108 * MIN)).toBe('1 h 48')
   expect(fmtDur((3 * 24 + 4) * 60 * MIN)).toBe('3 j 4 h')
-  expect(modeFromHint('⏵⏵ auto mode on (shift+tab to cycle)')).toBe('auto')
-  expect(modeFromHint('? for shortcuts')).toBe('default')
+  expect(pillOf('⏵⏵ auto mode on (shift+tab to cycle)')).toBe('auto')
+  expect(pillOf('⏸ manual mode on')).toBe('default')
+  expect(pillOf('⏵⏵ auto-accept edits on (shift+tab to cycle)')).toBe('acceptEdits')
+  expect(pillOf('⏵⏵ accept edits on · auto mode available')).toBe('acceptEdits')
+  expect(pillOf('⏵⏵ bypass permissions on')).toBe('bypassPermissions')
+  expect(pillOf('? for shortcuts · ← for agents')).toBeUndefined()
   expect(parseEstimate('Écrire l’épreuve (~20 min)')).toBe(20)
   expect(parseEstimate('Recuire le monde ~1 h 30')).toBe(90)
   expect(parseEstimate('Sans estimation')).toBeUndefined()
+})
+
+test('le mode suit shift+tab : le pied de prompt montre un instant le mode quitté', () => {
+  // Les lectures relevées en vrai, de auto à auto par un tour complet.
+  const reads: [number, string][] = [
+    [0, '(shift+tab to cycle) · ← for agents'],
+    [2487, 'auto mode on (shift+tab to cycle) · ← for agents'],
+    [2489, '? for shortcuts · ← for agents'],
+    [8586, 'manual mode on · ? for shortcuts · ← for agents'],
+    [8588, '(shift+tab to cycle) · ← for agents'],
+    [10337, 'accept edits on (shift+tab to cycle) · ← for agents'],
+    [10338, '(shift+tab to cycle) · ← for agents'],
+    [11913, 'plan mode on (shift+tab to cycle) · ← for agents'],
+    [11914, '(shift+tab to cycle) · ← for agents'],
+  ]
+  const tk = modeTracker()
+  const seen = reads.map(([at, text]) => readFooter(tk, text, at)).filter(Boolean)
+  expect(seen).toEqual(['default', 'acceptEdits', 'plan', 'auto'])
+})
+
+test('le cycle propre à la personne s’apprend, et une pastille qui reste est le mode lui-même', () => {
+  const tk = modeTracker()
+  // plan → contournement des permissions, absent du cycle par défaut.
+  readFooter(tk, 'plan mode on (shift+tab to cycle)', 0)
+  expect(readFooter(tk, '(shift+tab to cycle)', 1)).toBe('auto')
+  readFooter(tk, 'bypass permissions on (shift+tab to cycle)', 5000)
+  // Personne ne relit la ligne : la pastille est le mode affiché.
+  expect(settleFooter(tk, 5050)).toBeUndefined()
+  expect(settleFooter(tk, 5200)).toBe('bypassPermissions')
+  expect(tk.cycle.plan).toBe('bypassPermissions')
+  // Le shift+tab suivant part de là, avec le cycle appris.
+  readFooter(tk, 'bypass permissions on (shift+tab to cycle)', 9000)
+  expect(readFooter(tk, '? for shortcuts', 9001)).toBe('default')
+  readFooter(tk, 'plan mode on (shift+tab to cycle)', 12000)
+  expect(readFooter(tk, '(shift+tab to cycle)', 12001)).toBe('bypassPermissions')
 })
 
 test('la frise se répartit sur toute la largeur', async () => {
@@ -373,4 +412,46 @@ test('repliée, l’activité garde la fenêtre de 5 h : sa fin et sa projection
   // Une heure devant soi : ambre ; moins d'une demi-heure, ce serait le corail.
   expect((await dock.find({ type: 'Text', text: /^⚑ 100 % vers 09:30$/ }))?.props.color).toBe('ansi256(3)')
   await dock.unmount()
+})
+
+test('les numéros de version se comparent', () => {
+  expect(releaseOf('v0.3.0')).toBe('0.3.0')
+  expect(releaseOf('0.10.2')).toBe('0.10.2')
+  expect(releaseOf('v1.0.0-beta')).toBeUndefined()
+  expect(releaseOf(undefined)).toBeUndefined()
+  expect(isNewer('0.2.1', '0.3.0')).toBe(true)
+  expect(isNewer('0.9.0', '0.10.0')).toBe(true)
+  expect(isNewer('0.3.0', '0.3.0')).toBe(false)
+  expect(isNewer('1.0.0', '0.9.9')).toBe(false)
+})
+
+test('une version publiée plus récente s’annonce à côté du titre, et un toast le dit une fois', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  mock.store(on)
+  const toasts: string[] = []
+  const asked: string[] = []
+  on('ui.toast', (_$, e) => { toasts.push(e.text); return { value: undefined } })
+  on('ui.notify', () => ({ value: { isSent: false as const, reason: 'no-surface' as const } }))
+  on('env.get', () => ({ value: undefined }))
+  on('http.fetch', (_$, e) => {
+    asked.push(e.url)
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ tag_name: 'v9.0.0' }) } }
+  })
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('command.register', (_$, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_$, e) => ({ value: { tool: e.name } }))
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await clock.advance(20_000)
+  const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
+  await dock.drawn()
+  expect(await dock.find({ type: 'Text', text: / → v9\.0\.0$/ })).toBeDefined()
+  expect(toasts.filter(t => t.includes('9.0.0'))).toHaveLength(1)
+  expect(asked).toEqual(['https://api.github.com/repos/Happykiller/claude-cockpit/releases/latest'])
+  await dock.unmount()
+  // Une autre session le même jour : ni nouvelle requête, ni nouveau toast.
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await clock.advance(1000)
+  expect(asked).toHaveLength(1)
+  expect(toasts.filter(t => t.includes('9.0.0'))).toHaveLength(1)
 })

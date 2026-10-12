@@ -50,6 +50,8 @@ export type Activity = {
   /** The 5-hour window's readings `[at, percent]`, for the window `trailFor` ends. */
   trail?: [number, number][]
   trailFor?: string
+  /** The latest released version, when it is newer than the one running. */
+  latest?: string
 }
 
 export type SessionTokens = {

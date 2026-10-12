@@ -2,9 +2,10 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
 import type { Activity, BgTask, ContextParts, Memory, Plan, PlanSummary, StepStatus } from '../types'
-import { addTask, addUsage, endedTasks, fmtDur, fmtRatio, fromTodos, isEnded, measured, modeFromHint, moveStep, ratioOf, setPlan, summarize } from './model'
+import { addTask, addUsage, arriveMode, endedTasks, fmtDur, fmtRatio, fromTodos, isEnded, isNewer, measured, modeTracker, moveStep, ratioOf, readFooter, releaseOf, setPlan, settleFooter, summarize } from './model'
 import type { PlanInput, Usage } from './model'
 import { Band, Dock } from './view'
+import { CHANGELOG_URL, LATEST_RELEASE_URL, VERSION } from './version'
 
 const PANE = 'cockpit'
 const FAST_MS = 140
@@ -22,6 +23,13 @@ const closed = atom({ plugin: 'cockpit', key: 'closed' } as const, [] as string[
 const SAMPLES = 'samples'
 const PLANS = 'plans'
 const CLOSED = 'closed'
+/** The shift+tab cycle the footer has shown, so the next session starts knowing it. */
+const CYCLE = 'cycle'
+/** The latest release seen, when it was checked, and the one a toast announced. */
+const LATEST = 'latest'
+const CHECK_MS = 24 * 60 * 60_000
+/** After a failed check, the next try. */
+const RETRY_MS = 60 * 60_000
 const KEEP_SAMPLES = 60
 /** Every session writes to the same store: enough room that a busy one does not push out the others' plans. */
 const KEEP_PLANS = 40
@@ -38,6 +46,10 @@ let timer: { cancel: () => void } | undefined
 let isFast = false
 let n = 0
 let hintMode: string | undefined
+let modes = modeTracker()
+/** The cycle as last saved, so a learned step is saved once. */
+let savedCycle = ''
+let nextCheck = 0
 let lastPoll = 0
 /** The context fill that last raised the compaction alert, so it rings once per approach. */
 let compactWarned = false
@@ -60,6 +72,14 @@ async function beat($: EngineInterface) {
     lastPoll = now
     void $.session.usage().then(u => noteUsage($, u)).catch(() => undefined)
     void pruneAgents($).catch(() => undefined)
+    void checkUpdate($, now).catch(() => undefined)
+  }
+  const pill = settleFooter(modes, Date.now())
+  if (pill) hintMode = pill
+  const cycle = JSON.stringify(modes.cycle)
+  if (cycle !== savedCycle) {
+    savedCycle = cycle
+    void $.store.set(CYCLE, modes.cycle).catch(() => undefined)
   }
   const seen = hintMode
   if (seen !== undefined) {
@@ -70,6 +90,7 @@ async function beat($: EngineInterface) {
 
 async function noteMode($: EngineInterface, mode: string | undefined) {
   if (!mode) return
+  arriveMode(modes, mode)
   hintMode = undefined
   const a = await read($, activity)
   if (a.mode !== mode) await update($, activity, x => ({ ...x, mode }))
@@ -272,11 +293,44 @@ function asMinutes(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : undefined
 }
 
+type Latest = { version?: string; checkedAt: number; toasted?: string }
+
+/**
+ * Once a day at most, all sessions together: the latest GitHub Release. Newer
+ * than the one running, it shows beside the title, and a toast says it once.
+ */
+async function checkUpdate($: EngineInterface, now: number) {
+  if (now < nextCheck) return
+  nextCheck = now + RETRY_MS
+  if (await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')) return
+  let seen = (await $.store.get(LATEST)) as Latest | undefined
+  if (!seen || now - seen.checkedAt >= CHECK_MS) {
+    const res = await $.http.fetch(LATEST_RELEASE_URL, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'claude-cockpit' } })
+    // 404 until the first release: checked all the same.
+    if (!res.ok && res.status !== 404) return
+    const version = res.ok ? releaseOf((JSON.parse(res.text) as { tag_name?: unknown }).tag_name) : undefined
+    seen = { ...seen, version: version ?? seen?.version, checkedAt: now }
+  }
+  nextCheck = seen.checkedAt + CHECK_MS
+  const latest = seen.version !== undefined && isNewer(VERSION, seen.version) ? seen.version : undefined
+  if (latest && seen.toasted !== latest) {
+    seen = { ...seen, toasted: latest }
+    $.ui.toast(`Cockpit ${latest} est disponible · /cockpit version`)
+  }
+  await $.store.set(LATEST, seen)
+  if ((await read($, activity)).latest !== latest) await update($, activity, x => ({ ...x, latest }))
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    const cycle = (await $.store.get(CYCLE).catch(() => undefined)) as Record<string, string> | undefined
+    modes = modeTracker(cycle)
+    savedCycle = JSON.stringify(modes.cycle)
+    nextCheck = 0
+    void $.clock.now().then(now => checkUpdate($, now)).catch(() => undefined)
     await $.command.register({
       name: 'cockpit',
-      description: 'Ouvre le cockpit : activité de la session et frise du plan (« /cockpit reset » efface le plan)',
+      description: 'Ouvre le cockpit : activité de la session et frise du plan (« /cockpit reset » efface le plan, « /cockpit version » donne la version)',
     })
     await $.tool.register({
       name: 'plan',
@@ -333,6 +387,14 @@ export const register: Register = on => {
     if (arg === 'reset') {
       await $.state.set({ plugin: 'cockpit', key: 'plan' }, null)
       return { text: 'Cockpit : plan effacé.' }
+    }
+    if (arg === 'version') {
+      const { latest } = await read($, activity)
+      const how = latest
+        ? `\nLa ${latest} est disponible : \`claude plugin update cockpit@claude-cockpit\`, puis /reload-plugins.`
+        : ''
+      const auto = '\nMise à jour automatique : /plugin → Marketplaces → claude-cockpit → Enable auto-update.'
+      return { text: `Cockpit ${VERSION} · nouveautés : ${CHANGELOG_URL}${how}${auto}` }
     }
     if (arg === 'close') {
       await $.ui.close({ id: PANE })
@@ -395,10 +457,10 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // The footer names the mode the moment shift+tab changes it; a drawing
-  // never writes, so the next tick carries it into the state.
+  // shift+tab shows in the footer's reads (see readFooter); a drawing never
+  // writes, so the next tick carries the mode into the state.
   on('ui.render', { component: 'PromptHint' }, ($, e, next) => {
-    const seen = modeFromHint(e.props.hint)
+    const seen = readFooter(modes, e.props.hint, Date.now())
     if (seen) hintMode = seen
     return next(e)
   })

@@ -6,6 +6,7 @@ import {
   apportion, bar, fmtClock, fmtDur, fmtEstimate, fmtTokens, fmtWhen, placeLabels, prettyModel, project, sparkline,
   SPINNER, stepElapsed, timeline, tokenShares, tone, totals, wave, MIN,
 } from './model'
+import { VERSION } from './version'
 
 export type Els = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
 type T = Els['Text']
@@ -503,7 +504,7 @@ export function Dock({ E, d }: { E: Els; d: ViewData }) {
   return (
     <Box flexDirection="column" minHeight={Math.max(1, d.rows)} paddingX={PAD_X} paddingTop={1}>
       <Box justifyContent="space-between" marginBottom={1}>
-        <Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text>
+        <Text><Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text><Text color={FA}>  v{VERSION}</Text>{a.latest ? <Text color={WARN}> → v{a.latest}</Text> : null}</Text>
         <Box flexShrink={0}><Text><Text color={DM}>{fmtClock(d.now, d.tz, true)}  </Text><Text color={live}>●</Text><Text bold color={d.working ? ACC : DM}>{d.working ? ' LIVE' : ' VEILLE'}</Text></Text></Box>
       </Box>
 
@@ -772,7 +773,7 @@ export function Band({ E, d }: { E: Els; d: ViewData }) {
   return (
     <Box flexDirection="column" gap={1} paddingX={PAD_X}>
       <Box justifyContent="space-between">
-        <Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text>
+        <Text><Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text><Text color={FA}>  v{VERSION}</Text>{a.latest ? <Text color={WARN}> → v{a.latest}</Text> : null}</Text>
         <Box flexShrink={0}>
           <Text>
             <Text bold color={WH}>◆ {prettyModel(a.model)}</Text>
