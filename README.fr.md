@@ -40,11 +40,23 @@ Un panneau latéral animé pour [Claude Code](https://claude.com/claude-code). P
   - le titre du plan sur sa ligne, l'écoulé et le reste juste dessous.
 - **Calibrage d'une session à l'autre** : le cockpit garde le temps réel contre l'estimation de chaque étape mesurée. Au bout de cinq étapes, il transmet ce rapport à Claude, qui corrige ses estimations suivantes. Le panneau ne l'affiche pas.
 - **Alertes** : une étape bloquée (Claude t'attend) ou un plan fini envoie une notification du terminal et un toast.
-- Dix minutes après la fin d'un plan, le panneau affiche à la place les plans terminés dans cette session.
+- La section n'apparaît que pendant un plan : sans plan en cours, elle se cache. Un plan fini reste dix minutes en vue.
+
+**L'espace session**
+
+- Un bloc à part, en magenta et sans frise, que la session remplit librement avec l'outil `mcp__cockpit__board` pour te montrer ce qui a du sens. Le plan reste le travail que Claude exécute lui-même ; l'espace session sert surtout quand il orchestre un travail exécuté par d'autres (sous-agents, agents ouverts) et suit un plan qu'il a écrit.
+- Il affiche :
+  - une barre d'avancement par statut : fait, échoué, en cours, bloqué, à venir ;
+  - des chiffres clés (`tickets 12/40`), colorés ok, à surveiller ou en alerte ;
+  - les entrées, chacune avec son exécutant, son avancement, sa durée et une note. Au-delà de trois, les entrées closes se replient en une ligne ; les échecs restent en vue ;
+  - les quatre dernières lignes du journal, datées.
+- Chaque appel complète l'espace : un `id` déjà vu met l'entrée à jour, une valeur vide retire un chiffre, `remove` retire des entrées, `reset` repart de zéro, `clear` l'efface.
+- Une entrée qui passe bloquée ou en échec envoie une notification et un toast.
+- Sans espace session, le bloc ne s'affiche pas.
 
 **Des sections repliables**
 
-- Dans le panneau latéral, chaque titre de section se replie et se rouvre : un clic dessus, ou sa touche une fois le panneau sélectionné avec `ctrl+x tab` (`1` Configuration, `2` Statistiques, `3` Activité, `4` Plan).
+- Dans le panneau latéral, chaque titre de section se replie et se rouvre : un clic dessus, ou sa touche une fois le panneau sélectionné avec `ctrl+x tab` (`1` Configuration, `2` Statistiques, `3` Activité, `4` Plan, `5` Espace session).
 - Repliée, une section garde une ligne de résumé. Pour la configuration : `◆ Opus 5.5 · auto · effort high`. Pour l'activité, la fenêtre de 5 h : son taux, sa fin et la projection au rythme actuel, colorés comme la jauge (`5 H 57 % · fin 15:10 (1 h 12)  ⚑ 100 % vers 14:32`).
 - Le choix est mémorisé d'une session à l'autre.
 
@@ -70,12 +82,12 @@ Réponds `y` pour ajouter la marketplace, puis choisis une portée. **User** ren
 
 ### Mise en place conseillée
 
-**1. Laisser Claude tenir le plan sans demander.** Le cockpit déclare deux outils, `mcp__cockpit__plan` et `mcp__cockpit__step`. Dans le mode de permission par défaut, Claude Code peut demander ton accord à chaque étape. Pour les autoriser une fois pour toutes, ajoute-les dans `~/.claude/settings.json` :
+**1. Laisser Claude tenir le plan sans demander.** Le cockpit déclare trois outils, `mcp__cockpit__plan`, `mcp__cockpit__step` et `mcp__cockpit__board`. Dans le mode de permission par défaut, Claude Code peut demander ton accord à chaque étape. Pour les autoriser une fois pour toutes, ajoute-les dans `~/.claude/settings.json` :
 
 ```json
 {
   "permissions": {
-    "allow": ["mcp__cockpit__plan", "mcp__cockpit__step"]
+    "allow": ["mcp__cockpit__plan", "mcp__cockpit__step", "mcp__cockpit__board"]
   }
 }
 ```
@@ -113,12 +125,12 @@ Claude Code récupère alors chaque nouvelle version en arrière-plan, quelques 
 
 ## Utilisation
 
-Rien à faire : une section du prompt système demande à Claude de déclarer un plan pour toute tâche de trois étapes ou plus, puis de signaler chaque étape au fil de l'eau. Tu peux aussi le lui demander : *« mets le plan dans le cockpit »*.
+Rien à faire : une section du prompt système demande à Claude de déclarer un plan pour toute tâche de trois étapes ou plus, puis de signaler chaque étape au fil de l'eau. Une autre lui présente l'espace session, pour suivre un travail qu'il orchestre. Tu peux aussi le lui demander : *« mets le plan dans le cockpit »*, *« suis les agents dans l'espace session »*.
 
 | Commande | Effet |
 | --- | --- |
 | `/cockpit` | Rouvre le panneau, si tu l'as fermé |
-| `/cockpit reset` | Efface le plan en cours |
+| `/cockpit reset` | Efface le plan en cours et l'espace session |
 | `/cockpit close` | Ferme le panneau |
 | `/cockpit version` | Affiche la version installée et le lien vers le journal des versions |
 | `/cockpit update` | Met le cockpit à la dernière version (les deux commandes `claude plugin` qu'on lancerait dans un terminal) ; `/reload-plugins` la charge ensuite |
@@ -146,6 +158,7 @@ Le cockpit est un **mod** Claude Code : un module de hooks (`hooks/register.tsx`
 | Mode d'exécution | le `permission_mode` des hooks et, entre deux tours, l'indication du pied du prompt : à chaque `shift+tab`, le pied est relu une fois avec le mode qu'on quitte, et le cockpit en déduit le mode suivant dans le cycle qu'il a observé |
 | Travail en fond | `classic.Stop` (`background_tasks`), `SubagentStart` / `SubagentStop`, les `Bash` lancés en fond, les notifications de fin de tâche (`prompt.submit`), `$.agent.list()` |
 | Le plan | ses outils `mcp__cockpit__plan` / `mcp__cockpit__step`, plus `TodoWrite` et les outils de tâches |
+| L'espace session | son outil `mcp__cockpit__board`, et rien d'autre |
 
 Le cockpit garde dans le store local du plugin, sous ton dossier de configuration Claude Code :
 - les mesures du calibrage : les 60 dernières étapes mesurées ;

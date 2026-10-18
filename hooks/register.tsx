@@ -1,9 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Activity, BgTask, ContextParts, Memory, Plan, PlanSummary, StepStatus } from '../types'
-import { addTask, addUsage, arriveMode, endedTasks, fmtDur, fmtRatio, fromTodos, isEnded, isNewer, measured, modeTracker, moveStep, ratioOf, readFooter, releaseOf, resumeBlocked, setPlan, settleFooter, summarize } from './model'
-import type { PlanInput, Usage } from './model'
+import type { Activity, BgTask, Board, BoardStatus, BoardTone, ContextParts, Memory, Plan, PlanSummary, StepStatus } from '../types'
+import { addTask, addUsage, applyBoard, arriveMode, boardAlerts, endedTasks, fmtDur, fmtRatio, fromTodos, isEnded, isNewer, measured, modeTracker, moveStep, ratioOf, readFooter, releaseOf, resumeBlocked, setPlan, settleFooter, summarize } from './model'
+import type { BoardInput, PlanInput, Usage } from './model'
 import { Band, Dock } from './view'
 import { CHANGELOG_URL, LATEST_RELEASE_URL, MARKETPLACE, PLUGIN_ID, VERSION } from './version'
 
@@ -14,6 +14,7 @@ const IDLE_MS = 1000
 const tick = atom({ plugin: 'cockpit', key: 'tick' } as const, { n: 0, now: 0 })
 const activity = atom({ plugin: 'cockpit', key: 'activity' } as const, { limits: [], history: [], flow: [] } as Activity)
 const plan = atom({ plugin: 'cockpit', key: 'plan' } as const, null as Plan | null)
+const board = atom({ plugin: 'cockpit', key: 'board' } as const, null as Board | null)
 const working = atom({ plugin: 'cockpit', key: 'working' } as const, false)
 const bg = atom({ plugin: 'cockpit', key: 'bg' } as const, [] as BgTask[])
 const memory = atom({ plugin: 'cockpit', key: 'memory' } as const, { count: 0, recent: [] } as Memory)
@@ -35,10 +36,16 @@ const KEEP_SAMPLES = 60
 const KEEP_PLANS = 40
 
 const STATUSES: readonly StepStatus[] = ['pending', 'in_progress', 'completed', 'blocked', 'skipped']
+const BOARD_STATUSES: readonly BoardStatus[] = [...STATUSES, 'failed']
+const TONES: readonly BoardTone[] = ['ok', 'warn', 'hot']
 
 const GUIDE = `## Cockpit — plan d'exécution
 
-L'opérateur suit ton avancement dans un cockpit affiché à côté de la conversation. Dès qu'un travail compte au moins trois étapes ou durera plus de quelques minutes, déclare-le d'abord avec \`mcp__cockpit__plan\` : une étape par jalon vérifiable, chacune avec ton estimation honnête de sa durée en minutes (\`estimate_min\`). Puis signale chaque transition avec \`mcp__cockpit__step\` : \`in_progress\` au moment où tu attaques l'étape (une étape close sans avoir été ouverte n'est pas chronométrée), \`completed\` quand elle est tenue, \`blocked\` quand tu attends l'opérateur, avec une note courte sur ce que tu fais. Quand l'opérateur a répondu, l'étape bloquée repart en \`in_progress\` ; clos-la avant de passer à la suivante. Si une estimation change nettement en cours de route, renvoie-la. Ces appels ne remplacent pas les comptes rendus à l'opérateur, et un sous-agent ne les fait pas.`
+L'opérateur suit ton avancement dans un cockpit affiché à côté de la conversation. Dès qu'un travail compte au moins trois étapes ou durera plus de quelques minutes, déclare-le d'abord avec \`mcp__cockpit__plan\` : une étape par jalon vérifiable, chacune avec ton estimation honnête de sa durée en minutes (\`estimate_min\`). Puis signale chaque transition avec \`mcp__cockpit__step\` : \`in_progress\` au moment où tu attaques l'étape (une étape close sans avoir été ouverte n'est pas chronométrée), \`completed\` quand elle est tenue, \`blocked\` quand tu attends l'opérateur, avec une note courte sur ce que tu fais. Quand l'opérateur a répondu, l'étape bloquée repart en \`in_progress\` ; clos-la avant de passer à la suivante. Si une estimation change nettement en cours de route, renvoie-la. Ces appels ne remplacent pas les comptes rendus à l'opérateur, et un sous-agent ne les fait pas.
+
+## Cockpit — espace session
+
+Le cockpit a un second bloc, distinct du plan : l'espace session, que tu remplis avec \`mcp__cockpit__board\` pour montrer à l'opérateur ce qui a du sens et que ton plan ne dit pas. Le plan reste ton propre travail, étape par étape ; ne le recopie pas dans l'espace session. Sers-t'en notamment quand tu orchestres un travail exécuté par d'autres (sous-agents, agents ouverts) : une entrée par lot ou par ticket avec son \`id\`, son exécutant (\`owner\`), son statut et une note, quelques chiffres clés (\`metrics\`), et une ligne de journal (\`event\`) à chaque fait marquant. Chaque appel complète l'espace (un \`id\` déjà vu met l'entrée à jour) ; \`reset\` repart de zéro, \`clear\` l'efface quand il n'a plus lieu d'être.`
 
 // Module variables: what the next tick folds into the state. A reload loses
 // them and the next event refills them; the state itself is the host's.
@@ -356,7 +363,7 @@ export const register: Register = on => {
     void $.clock.now().then(now => checkUpdate($, now)).catch(() => undefined)
     await $.command.register({
       name: 'cockpit',
-      description: 'Ouvre le cockpit : activité de la session et frise du plan (« /cockpit reset » efface le plan, « /cockpit version » donne la version, « /cockpit update » met à jour)',
+      description: 'Ouvre le cockpit : activité de la session, frise du plan et espace session (« /cockpit reset » efface le plan et l’espace session, « /cockpit version » donne la version, « /cockpit update » met à jour)',
     })
     await $.tool.register({
       name: 'plan',
@@ -400,6 +407,50 @@ export const register: Register = on => {
       },
       isDeferred: false,
     })
+    await $.tool.register({
+      name: 'board',
+      description:
+        "Tient l'espace session du cockpit, un bloc distinct du plan : ce que tu veux montrer à l'opérateur pour suivre une activité, en particulier un travail que d'autres exécutent (sous-agents, agents ouverts). Chaque appel complète l'espace : `items` ajoute ou met à jour des entrées par `id`, `metrics` des chiffres clés par `label` (valeur vide = retirée), `event` ajoute une ligne datée au journal, `remove` retire des entrées. `reset` repart d'un espace vide, `clear` l'efface.",
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: "Le nom de ce que l'espace suit (ex. « PHAR — sprint 14, orchestration »)" },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Ta clé stable pour cette entrée (ex. « PHAR-12 », « lot-3 »)' },
+                title: { type: 'string' },
+                status: { type: 'string', enum: [...BOARD_STATUSES] },
+                owner: { type: 'string', description: "Qui l'exécute : agent, personne, service" },
+                note: { type: 'string', description: 'Où il en est, en une ligne' },
+                progress: { type: 'number', minimum: 0, maximum: 100, description: 'Avancement en %, si tu le connais' },
+              },
+              required: ['id'],
+            },
+          },
+          metrics: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                label: { type: 'string' },
+                value: { type: ['string', 'number'] },
+                tone: { type: 'string', enum: [...TONES], description: 'ok, warn (à surveiller) ou hot (alerte)' },
+              },
+              required: ['label', 'value'],
+            },
+          },
+          event: { type: 'string', description: 'Une ligne pour le journal, datée par le cockpit' },
+          event_tone: { type: 'string', enum: [...TONES] },
+          remove: { type: 'array', items: { type: 'string' } },
+          reset: { type: 'boolean' },
+          clear: { type: 'boolean' },
+        },
+      },
+      isDeferred: false,
+    })
     await refresh($).catch(() => undefined)
     await loadMemory($).catch(() => undefined)
     await loadFolds($).catch(() => undefined)
@@ -412,7 +463,8 @@ export const register: Register = on => {
     const arg = e.args.trim()
     if (arg === 'reset') {
       await $.state.set({ plugin: 'cockpit', key: 'plan' }, null)
-      return { text: 'Cockpit : plan effacé.' }
+      await $.state.set({ plugin: 'cockpit', key: 'board' }, null)
+      return { text: 'Cockpit : plan et espace session effacés.' }
     }
     if (arg === 'version') {
       const { latest } = await read($, activity)
@@ -530,6 +582,50 @@ export const register: Register = on => {
     return { result: `Étape ${index + 1} : ${status}.` }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'cockpit : le suivi du plan a échoué.' }))
 
+  // ── The session space: the cockpit's third tool ──────────────────────
+  on('tool.call', { tool: 'mcp__cockpit__board' }, async ($, e) => {
+    if (e.clear === true) {
+      await $.state.set({ plugin: 'cockpit', key: 'board' }, null)
+      return { result: 'Espace session effacé.' }
+    }
+    const tones = (v: unknown) => TONES.find(t => t === v)
+    const list = (v: unknown) => (Array.isArray(v) ? v.map(x => (x ?? {}) as Record<string, unknown>) : [])
+    // Unlike asText, an empty string stays: it takes the field off.
+    const text = (v: unknown) => (typeof v === 'string' ? v.trim() : undefined)
+    const event = asText(e.event)
+    const input: BoardInput = {
+      title: asText(e.title),
+      reset: e.reset === true,
+      remove: Array.isArray(e.remove) ? e.remove.flatMap(x => asText(x) ?? []) : undefined,
+      items: list(e.items).flatMap(o => {
+        const id = asText(o.id) ?? (typeof o.id === 'number' ? String(o.id) : undefined)
+        if (!id) return []
+        return [{
+          id,
+          title: asText(o.title),
+          status: BOARD_STATUSES.find(s => s === o.status),
+          owner: text(o.owner),
+          note: text(o.note),
+          progress: typeof o.progress === 'number' && Number.isFinite(o.progress) ? o.progress : undefined,
+        }]
+      }),
+      metrics: list(e.metrics).flatMap(o => {
+        const label = asText(o.label)
+        const value = typeof o.value === 'number' ? String(o.value) : text(o.value)
+        return label && value !== undefined ? [{ label, value, tone: tones(o.tone) }] : []
+      }),
+      event: event ? { text: event, tone: tones(e.event_tone) } : undefined,
+    }
+    const now = await $.clock.now()
+    const prev = await read($, board)
+    const next = applyBoard(prev, input, now)
+    await $.state.set({ plugin: 'cockpit', key: 'board' }, next)
+    for (const s of boardAlerts(prev, next)) {
+      void notify($, `${s.status === 'failed' ? 'Échec' : 'Bloqué'} · ${s.id} ${s.title}${s.note ? ` : ${s.note}` : ''}`)
+    }
+    return { result: `Espace session « ${next.title} » à jour : ${next.items.length} entrées, ${next.metrics.length} chiffres, ${next.log.length} lignes de journal.` }
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: "cockpit : la mise à jour de l'espace session a échoué." }))
+
   // ── The plan: the engine's task tools, where the session has them ─────
   on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
     const ran = await next(e)
@@ -637,18 +733,18 @@ export const register: Register = on => {
   // ── The drawing ───────────────────────────────────────────────────────
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const E = $.ui.resolve(e)
-    const [t, stored, p, w, tasks, m, folded] = await Promise.all([read($, tick), read($, activity), read($, plan), read($, working), read($, bg), read($, memory), read($, closed)])
+    const [t, stored, p, b, w, tasks, folded] = await Promise.all([read($, tick), read($, activity), read($, plan), read($, board), read($, working), read($, bg), read($, closed)])
     // Un état conservé par une version antérieure du mod peut manquer d'un champ né depuis.
     const a: Activity = { ...stored, limits: stored.limits ?? [], history: stored.history ?? [], flow: stored.flow ?? [] }
     const d = {
       activity: a,
       history: a.history,
       plan: p,
+      board: b ?? null,
       n: t.n,
       now: t.now || (await $.clock.now()),
       working: w,
       bg: tasks ?? [],
-      memory: m ?? { count: 0, recent: [] },
       closed: folded ?? [],
       tz: a.tzOffsetMin ?? 0,
       cols: e.props.bodyColumns,

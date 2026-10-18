@@ -1,10 +1,10 @@
 import type { ElementTable, RenderChildren } from 'claude-code'
 
-import type { Activity, BgTask, Memory, Plan, Step } from '../types'
-import type { Label, Span, Totals } from './model'
+import type { Activity, BgTask, Board, BoardItem, BoardTone, Plan, Step } from '../types'
+import type { BoardCounts, Label, Span, Totals } from './model'
 import {
-  apportion, bar, fmtClock, fmtDur, fmtEstimate, fmtTokens, fmtWhen, placeLabels, prettyModel, project, sparkline,
-  SPINNER, stepElapsed, timeline, tokenShares, tone, totals, wave, MIN,
+  apportion, bar, boardCounts, fmtClock, fmtDur, fmtEstimate, fmtTokens, fmtWhen, placeLabels, prettyModel, project, sparkline,
+  isItemClosed, SPINNER, stepElapsed, timeline, tokenShares, tone, totals, wave, MIN,
 } from './model'
 import { VERSION } from './version'
 
@@ -15,11 +15,12 @@ export type ViewData = {
   activity: Activity
   history: readonly number[]
   plan: Plan | null
+  /** The session space, apart from the plan. */
+  board: Board | null
   n: number
   now: number
   working: boolean
   bg: readonly BgTask[]
-  memory: Memory
   /** The dock's sections the person folded. */
   closed: readonly string[]
   tz: number
@@ -39,6 +40,8 @@ const DM = 'inactive'
 const FA = 'ansi256(8)'
 const WH = 'ansi256(15)'
 const TRACK = 'ansi256(8)'
+/** The session space's own hue, so it never reads as the plan. */
+const SP = 'ansi256(13)'
 /** The empty part of a gauge: a light shade a cut above the frames, so the gauge keeps its length. */
 const EMPTY = '░'
 /** A step that waits for the operator: paused, as Claude Code's own footer draws it, not failed. */
@@ -86,7 +89,7 @@ function used(d: ViewData, kind: string) {
 type Fold = { id: string; hotkey: string; isOpen: boolean }
 
 /** The digit that toggles each dock section while the pane holds the keyboard. */
-const FOLDS = { config: '1', stats: '2', activity: '3', plan: '4' } as const
+const FOLDS = { config: '1', stats: '2', activity: '3', plan: '4', board: '5' } as const
 
 function fold(d: ViewData, id: keyof typeof FOLDS): Fold {
   return { id, hotkey: FOLDS[id], isOpen: !d.closed.includes(id) }
@@ -97,12 +100,12 @@ function fold(d: ViewData, id: keyof typeof FOLDS): Fold {
  * the title is a button (a click, or its digit once the pane has the keyboard)
  * led by ▾ open or ▸ folded.
  */
-function Heading({ E, title, width, right, fold }: { E: Els; title: string; width: number; right?: RenderChildren; fold?: Fold }) {
+function Heading({ E, title, width, right, fold, color }: { E: Els; title: string; width: number; right?: RenderChildren; fold?: Fold; color?: string }) {
   const { Box, Text, Button } = E
   const label = fold ? `${fold.isOpen ? '▾' : '▸'} ${spaced(title)}` : spaced(title)
   // A plain Button with a hotkey draws it ahead, `1: `.
   const fill = Math.max(2, width - label.length - 4 - (right ? 8 : 0) - (fold ? 3 : 0))
-  const parts = [<Text color={FA}>━━ </Text>, <Text bold color={fold && !fold.isOpen ? WH : DM}>{label}</Text>, <Text color={FA}> {'━'.repeat(fill)}</Text>]
+  const parts = [<Text color={FA}>━━ </Text>, <Text bold color={color ?? (fold && !fold.isOpen ? WH : DM)}>{label}</Text>, <Text color={FA}> {'━'.repeat(fill)}</Text>]
   return (
     <Box justifyContent="space-between">
       {fold
@@ -546,9 +549,16 @@ export function Dock({ E, d }: { E: Els; d: ViewData }) {
         {d.bg.length > 0 && <Background E={E} d={d} />}
       </Box>}
 
-      <Box marginTop={1} flexGrow={1}>
-        {d.plan && !isFaded(d.plan, d.now) ? <DockPlan E={E} d={d} plan={d.plan} W={W} /> : <Idle E={E} d={d} W={W} />}
-      </Box>
+      {hasPlan(d) && (
+        <Box marginTop={1} flexGrow={d.board ? 0 : 1}>
+          <DockPlan E={E} d={d} plan={d.plan} W={W} />
+        </Box>
+      )}
+      {d.board && (
+        <Box marginTop={1} flexGrow={1}>
+          <DockBoard E={E} d={d} board={d.board} W={W} />
+        </Box>
+      )}
     </Box>
   )
 }
@@ -566,41 +576,9 @@ function isFaded(plan: Plan, now: number) {
   return plan.finishedAt !== undefined && now - plan.finishedAt > FADE_MS
 }
 
-function idleLine(finished: number): string {
-  if (finished === 0) return 'en veille'
-  const s = finished > 1 ? 's' : ''
-  return `en veille · ${finished} plan${s} terminé${s} dans la session`
-}
-
-function Idle({ E, d, W }: { E: Els; d: ViewData; W: number }) {
-  const { Box, Text } = E
-  const recent = d.memory.recent.slice(0, 5)
-  return (
-    <Box flexDirection="column" flexGrow={1}>
-      <Heading E={E} title="PLAN" width={W} fold={fold(d, 'plan')} />
-      {!fold(d, 'plan').isOpen ? (
-        <Text color={DM} wrap="truncate-end">{idleLine(d.memory.recent.length)}</Text>
-      ) : <Box flexDirection="column" alignItems="center" marginTop={1}>
-        <Text color={ACC}>{wave(d.n, Math.min(32, W))}</Text>
-        <Text color={DM}>la frise apparaît dès que Claude déclare un plan</Text>
-      </Box>}
-      {fold(d, 'plan').isOpen && recent.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Heading E={E} title="PLANS DE LA SESSION" width={W} />
-          <Box flexDirection="column" marginTop={1}>
-            {recent.map(r => (
-              <Box justifyContent="space-between">
-                <Text wrap="truncate-end"><Text color={OK}>✓</Text> <Text color={WH}>{r.title}</Text></Text>
-                <Box flexShrink={0} marginLeft={1}>
-                  <Text><Text color={WH}>{fmtDur(r.realMs)}</Text><Text color={DM}>{` / ~${fmtEstimate(r.estimateMin)} · ${fmtWhen(r.finishedAt, d.now, d.tz)}`}</Text></Text>
-                </Box>
-              </Box>
-            ))}
-          </Box>
-        </Box>
-      )}
-    </Box>
-  )
+/** The plan section shows only while a plan runs, or for a while once it is done. */
+function hasPlan(d: ViewData): d is ViewData & { plan: Plan } {
+  return d.plan !== null && !isFaded(d.plan, d.now)
 }
 
 /** The work the session left running: shells, subagents, monitors. */
@@ -766,6 +744,144 @@ function Current({ E, d, s, i, W }: { E: Els; d: ViewData; s: Step; i: number; W
   )
 }
 
+// ── The session space: what the session shows besides its plan ────────────
+
+const BOARD_TONE: Record<BoardTone, string> = { ok: OK, warn: WARN, hot: HOT }
+/** Closed items kept in sight; the older ones fold into one line. */
+const MAX_CLOSED_SHOWN = 3
+const LOG_SHOWN = 4
+
+function itemIcon(T: T, s: BoardItem, n: number) {
+  switch (s.status) {
+    case 'completed': return <T color={OK}>✓</T>
+    case 'failed': return <T bold color={HOT}>✗</T>
+    case 'skipped': return <T color={FA}>⊘</T>
+    case 'blocked': return <T bold color={WARN}>{WAIT}</T>
+    case 'in_progress': return <T bold color={SP}>{SPINNER[n % SPINNER.length]}</T>
+    default: return <T color={DM}>○</T>
+  }
+}
+
+/** Pieces of one line, a dim ` · ` between them; none when there are none. */
+function dotted(T: T, pieces: readonly RenderChildren[]): RenderChildren[] {
+  return pieces.flatMap((p, i) => (i === 0 ? [p] : [<T color={DM}> · </T>, p]))
+}
+
+/** What runs, waits or failed, in a few signs: `◉ 2 · ⏸ 1 · ✗ 1`. */
+function countsText(T: T, c: BoardCounts) {
+  const signs: [number, string, string][] = [[c.in_progress, '◉', SP], [c.blocked, WAIT, WARN], [c.failed, '✗', HOT]]
+  return dotted(T, signs.filter(([n]) => n > 0).map(([n, sign, color]) => <T bold color={color}>{`${sign} ${n}`}</T>))
+}
+
+/** The key figures, `label value` each, in their tone. */
+function Metrics({ T, board }: { T: T; board: Board }) {
+  return (
+    <T wrap="wrap">
+      {board.metrics.map((m, i) => (
+        <T>{i > 0 && <T color={FA}>  ·  </T>}<T color={DM}>{m.label} </T><T bold color={m.tone ? BOARD_TONE[m.tone] : WH}>{m.value}</T></T>
+      ))}
+    </T>
+  )
+}
+
+/** The items as one gauge: done, failed, running, waiting, then what is still to come. */
+function BoardBar({ T, c, width }: { T: T; c: BoardCounts; width: number }) {
+  const runs: [number, string, string][] = [
+    [c.completed, '█', OK], [c.failed, '█', HOT], [c.in_progress, '█', SP], [c.blocked, '█', WARN], [c.pending, EMPTY, EMPTY_TONE],
+  ]
+  const cells = apportion(runs.map(r => r[0]), width, 0)
+  return <T wrap="truncate-end">{runs.map((r, i) => <T color={r[2]}>{r[1].repeat(cells[i] ?? 0)}</T>)}</T>
+}
+
+/** What sits right of an item: who does it, how far, how long. */
+function itemAside(T: T, s: BoardItem, now: number) {
+  const isRunning = s.status === 'in_progress' || s.status === 'blocked'
+  const pieces: RenderChildren[] = []
+  if (s.owner) pieces.push(<T color={DM}>{s.owner}</T>)
+  if (s.progress !== undefined && !isItemClosed(s.status)) pieces.push(<T bold color={SP}>{`${s.progress} %`}</T>)
+  if (s.startedAt !== undefined) pieces.push(<T bold={isRunning} color={isRunning ? SP : DM}>{fmtDur((s.endedAt ?? now) - s.startedAt)}</T>)
+  return dotted(T, pieces)
+}
+
+function BoardRow({ E, s, d }: { E: Els; s: BoardItem; d: ViewData }) {
+  const { Box, Text } = E
+  const tint = s.status === 'pending' ? DM : s.status === 'skipped' ? FA : WH
+  const noteColor = s.status === 'failed' ? HOT : s.status === 'blocked' ? WARN : WH
+  const aside = itemAside(Text, s, d.now)
+  return (
+    <Box flexDirection="column">
+      <Box justifyContent="space-between">
+        <Text wrap="truncate-end">
+          {itemIcon(Text, s, d.n)} <Text color={FA}>{s.id}</Text>
+          {s.title !== s.id && <Text bold={s.status === 'in_progress'} color={tint} strikethrough={s.status === 'skipped'}> {s.title}</Text>}
+        </Text>
+        {aside.length > 0 && <Box flexShrink={0} marginLeft={1}><Text>{aside}</Text></Box>}
+      </Box>
+      {s.note && (!isItemClosed(s.status) || s.status === 'failed') && (
+        <Text wrap="truncate-end"><Text color={DM}>   › </Text><Text color={noteColor}>{s.note}</Text></Text>
+      )}
+    </Box>
+  )
+}
+
+function DockBoard({ E, d, board, W }: { E: Els; d: ViewData; board: Board; W: number }) {
+  const { Box, Text } = E
+  const c = boardCounts(board)
+  const f = fold(d, 'board')
+  // A failure stays in sight; the other closed items give way past the last few.
+  const closedIdx = board.items.flatMap((s, i) => (s.status === 'completed' || s.status === 'skipped' ? [i] : []))
+  const hidden = closedIdx.slice(0, Math.max(0, closedIdx.length - MAX_CLOSED_SHOWN))
+  const allDone = c.total > 0 && c.completed === c.total
+  return (
+    <Box flexDirection="column" flexGrow={1}>
+      <Heading
+        E={E} title="ESPACE SESSION" width={W} fold={f} color={SP}
+        right={c.total > 0 ? <Text><Text bold color={allDone ? OK : SP}>{c.completed}</Text><Text color={DM}> / {c.total}</Text></Text> : undefined}
+      />
+      {!f.isOpen ? <BoardLine E={E} d={d} board={board} c={c} /> : <Box flexDirection="column" marginTop={1}>
+        <Box justifyContent="space-between">
+          <Text bold color={WH} wrap="truncate-end">{board.title}</Text>
+          <Box flexShrink={0} marginLeft={1}><Text color={DM}>{`maj ${fmtClock(board.updatedAt, d.tz)}`}</Text></Box>
+        </Box>
+        {c.total > 0 && <BoardBar T={Text} c={c} width={W} />}
+        {board.metrics.length > 0 && <Metrics T={Text} board={board} />}
+        {board.items.length > 0 && (
+          <Box flexDirection="column" marginTop={1}>
+            {hidden.length > 0 && <Text color={DM}><Text color={OK}>✓</Text>  … {hidden.length} entrées closes</Text>}
+            {board.items.map((s, i) => (hidden.includes(i) ? null : <BoardRow E={E} s={s} d={d} />))}
+          </Box>
+        )}
+        {board.log.length > 0 && (
+          <Box flexDirection="column" marginTop={1}>
+            <Text bold color={DM}>JOURNAL</Text>
+            {board.log.slice(-LOG_SHOWN).map(l => (
+              <Text wrap="truncate-end"><Text color={DM}>{fmtClock(l.at, d.tz)}  </Text><Text color={l.tone ? BOARD_TONE[l.tone] : WH}>{l.text}</Text></Text>
+            ))}
+          </Box>
+        )}
+      </Box>}
+    </Box>
+  )
+}
+
+/** Folded, the session space keeps its title and what runs, waits or failed. */
+function BoardLine({ E, d, board, c }: { E: Els; d: ViewData; board: Board; c: BoardCounts }) {
+  const { Box, Text } = E
+  const counts = countsText(Text, c)
+  const last = board.log.at(-1)
+  return (
+    <Box justifyContent="space-between">
+      <Text wrap="truncate-end">
+        <Text bold color={WH}>{board.title}</Text>
+        {counts.length > 0 && <Text color={DM}>  ·  </Text>}
+        {counts}
+        {counts.length === 0 && last && <Text color={DM}>{`  ·  ${last.text}`}</Text>}
+      </Text>
+      <Box flexShrink={0} marginLeft={1}><Text color={DM}>{`maj ${fmtClock(board.updatedAt, d.tz)}`}</Text></Box>
+    </Box>
+  )
+}
+
 // ── The band above the prompt ──────────────────────────────────────────────
 
 export function Band({ E, d }: { E: Els; d: ViewData }) {
@@ -794,9 +910,8 @@ export function Band({ E, d }: { E: Els; d: ViewData }) {
       </Box>
       <BandActivity E={E} d={d} />
       {d.bg.length > 0 && <BandBackground E={E} d={d} />}
-      {d.plan && !isFaded(d.plan, d.now) ? <BandPlan E={E} d={d} plan={d.plan} W={W} /> : (
-        <Text><Text bold color={DM}>{spaced('PLAN')}  </Text><Text color={ACC}>{wave(d.n, 24)}</Text><Text color={DM}>  la frise apparaît dès que Claude déclare un plan</Text></Text>
-      )}
+      {hasPlan(d) && <BandPlan E={E} d={d} plan={d.plan} W={W} />}
+      {d.board && <BandBoard E={E} d={d} board={d.board} />}
     </Box>
   )
 }
@@ -903,6 +1018,31 @@ function BandBackground({ E, d }: { E: Els; d: ViewData }) {
         </Text>
       ))}
     </Text>
+  )
+}
+
+/** The session space in two lines: where it stands and its figures, then its latest log line. */
+function BandBoard({ E, d, board }: { E: Els; d: ViewData; board: Board }) {
+  const { Box, Text } = E
+  const c = boardCounts(board)
+  const counts = countsText(Text, c)
+  const last = board.log.at(-1)
+  return (
+    <Box flexDirection="column">
+      <Box justifyContent="space-between">
+        <Text wrap="truncate-end">
+          <Text bold color={SP}>{spaced('ESPACE SESSION')}  </Text><Text bold color={WH}>{board.title}  </Text>
+          {c.total > 0 && <Text><Text bold color={c.completed === c.total ? OK : SP}>{c.completed}</Text><Text color={DM}>/{c.total}  </Text></Text>}
+          {counts}
+        </Text>
+        {board.metrics.length > 0 && (
+          <Box flexShrink={0} marginLeft={1}><Metrics T={Text} board={board} /></Box>
+        )}
+      </Box>
+      {last && (
+        <Text wrap="truncate-end"><Text bold color={SP}>› </Text><Text color={DM}>{fmtClock(last.at, d.tz)}  </Text><Text color={last.tone ? BOARD_TONE[last.tone] : WH}>{last.text}</Text></Text>
+      )}
+    </Box>
   )
 }
 

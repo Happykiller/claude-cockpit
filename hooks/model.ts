@@ -1,4 +1,4 @@
-import type { Plan, PlanSummary, SessionTokens, Step, StepStatus } from '../types'
+import type { Board, BoardItem, BoardMetric, BoardStatus, BoardTone, Plan, PlanSummary, SessionTokens, Step, StepStatus } from '../types'
 
 export const MIN = 60_000
 
@@ -367,6 +367,79 @@ export function fromTodos(prev: Plan | null, todos: readonly Todo[], now: number
 export function addTask(prev: Plan | null, id: string, title: string, estimateMin: number | undefined, now: number): Plan {
   const base: Plan = prev?.source === 'tasks' ? prev : { title: 'Tâches', source: 'tasks', createdAt: now, steps: [] }
   return { ...base, steps: [...base.steps, { id, title, status: 'pending', estimateMin }] }
+}
+
+// ── The session space: what the session shows besides its own plan ────────
+
+export type BoardItemInput = { id: string; title?: string; status?: BoardStatus; owner?: string; note?: string; progress?: number }
+
+export type BoardInput = {
+  title?: string
+  items?: BoardItemInput[]
+  /** Upserted by label; an empty value takes the figure off. */
+  metrics?: BoardMetric[]
+  event?: { text: string; tone?: BoardTone }
+  remove?: string[]
+  /** Starts from an empty space instead of the current one. */
+  reset?: boolean
+}
+
+export const KEEP_LOG = 20
+
+export function isItemClosed(status: BoardStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'skipped'
+}
+
+function applyItem(was: BoardItem | undefined, u: BoardItemInput, now: number): BoardItem {
+  const item: BoardItem = { ...was, id: u.id, title: u.title ?? was?.title ?? u.id, status: u.status ?? was?.status ?? 'pending' }
+  // An empty string takes the field off.
+  if (u.owner !== undefined) item.owner = u.owner || undefined
+  if (u.note !== undefined) item.note = u.note || undefined
+  if (u.progress !== undefined) item.progress = Math.min(100, Math.max(0, Math.round(u.progress)))
+  if (item.status === 'in_progress' || item.status === 'blocked') {
+    item.startedAt ??= now
+    item.endedAt = undefined
+  } else if (isItemClosed(item.status) && item.status !== was?.status) {
+    item.endedAt = now
+  } else if (item.status === 'pending') {
+    item.endedAt = undefined
+  }
+  return item
+}
+
+/** One call of `mcp__cockpit__board` folded into the space: items and figures upserted, the log appended. */
+export function applyBoard(prev: Board | null, input: BoardInput, now: number): Board {
+  const base: Board = prev && !input.reset ? prev : { title: 'Espace session', createdAt: now, updatedAt: now, items: [], metrics: [], log: [] }
+  const removed = new Set(input.remove ?? [])
+  let items = base.items.filter(x => !removed.has(x.id))
+  for (const u of input.items ?? []) {
+    const was = items.find(x => x.id === u.id)
+    const item = applyItem(was, u, now)
+    items = was ? items.map(x => (x === was ? item : x)) : [...items, item]
+  }
+  let metrics = base.metrics
+  for (const m of input.metrics ?? []) {
+    const at = metrics.findIndex(x => x.label === m.label)
+    if (m.value === '') metrics = metrics.filter(x => x.label !== m.label)
+    else metrics = at < 0 ? [...metrics, m] : metrics.map((x, i) => (i === at ? m : x))
+  }
+  const log = input.event ? [...base.log, { at: now, ...input.event }].slice(-KEEP_LOG) : base.log
+  return { title: input.title ?? base.title, createdAt: base.createdAt, updatedAt: now, items, metrics, log }
+}
+
+/** The items `next` puts in front of the operator: newly blocked or failed. */
+export function boardAlerts(prev: Board | null, next: Board): BoardItem[] {
+  return next.items.filter(s => (s.status === 'blocked' || s.status === 'failed') && prev?.items.find(p => p.id === s.id)?.status !== s.status)
+}
+
+export type BoardCounts = Record<BoardStatus, number> & { total: number }
+
+/** The space's items by status; `total` leaves out the skipped ones. */
+export function boardCounts(board: Board): BoardCounts {
+  const c: BoardCounts = { pending: 0, in_progress: 0, completed: 0, blocked: 0, failed: 0, skipped: 0, total: 0 }
+  for (const s of board.items) c[s.status]++
+  c.total = board.items.length - c.skipped
+  return c
 }
 
 // ── What the frieze says about time ────────────────────────────────────────

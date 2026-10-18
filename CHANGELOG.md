@@ -6,6 +6,18 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-18
+
+### Added
+
+- The session space: a fifth section (key `5`), apart from the plan, that the session fills through the new `mcp__cockpit__board` tool to show what it finds worth following, most of all work others carry out while it orchestrates (subagents, agents it opened). Items with who runs them, a status (`failed` included), a progress, a note and their time; key figures; a dated log. Each call adds to it; `reset` starts over, `clear` wipes it. An item that becomes blocked or fails rings like a blocked step. The band above the prompt shows it on two lines.
+- The system prompt tells Claude about the session space, and that it is not a copy of its plan.
+
+### Changed
+
+- The Plan section shows only while there is a plan: with none, it hides instead of the idle wave and the list of the session's finished plans. A finished plan still stays ten minutes.
+- `/cockpit reset` also clears the session space.
+
 ## [0.3.3] - 2026-10-12
 
 ### Added
@@ -81,7 +93,8 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 - The plan as a timeline, from Claude's own tools `mcp__cockpit__plan` and `mcp__cockpit__step`, and from `TodoWrite` and `TaskCreate` lists.
 - Colors taken from the terminal's theme.
 
-[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.0...v0.3.1

@@ -35,11 +35,23 @@ An animated side panel for [Claude Code](https://claude.com/claude-code) that ke
 - Claude declares the plan with an estimate for each step, then reports every transition. The cockpit draws a timeline across the whole width: a node where each step began and a ⚑ where the plan ends, each step as long as it lasts. Above the nodes, the step numbers; below them, the times: real for the steps already started, expected (`~14:56`) for the others, and the expected finish under the ⚑. Under the timeline, each step's time against its estimate, a bar for the running step (it turns red past its estimate), and the elapsed and remaining time on the line under the plan's title.
 - **Calibration across sessions**: the cockpit stores the real time against the estimate for every measured step. After five steps, it gives the ratio back to Claude, who adjusts its next estimates. The panel does not show it.
 - **Alerts**: a blocked step (Claude waiting for you) and a finished plan each send a terminal notification and a toast.
-- Ten minutes after a plan finishes, the panel shows the plans this session finished instead.
+- The section shows only while there is a plan: with no plan running, it hides. A finished plan stays in sight for ten minutes.
+
+**The session space**
+
+- A block of its own, in magenta and with no timeline, that the session fills as it sees fit through the `mcp__cockpit__board` tool to show you what matters. The plan stays the work Claude does itself; the session space is mostly for when it orchestrates work others carry out (subagents, agents it opened) and follows a plan it wrote.
+- It shows:
+  - a progress bar by status: done, failed, running, blocked, to come;
+  - key figures (`tickets 12/40`), colored ok, watch or alert;
+  - the items, each with who runs it, its progress, its time and a note. Past three, the closed items fold into one line; failures stay in sight;
+  - the log's last four lines, with their time.
+- Each call adds to the space: an `id` already seen updates its item, an empty value removes a figure, `remove` removes items, `reset` starts over, `clear` wipes it.
+- An item that becomes blocked or fails sends a notification and a toast.
+- With no session space, the block does not show.
 
 **Foldable sections**
 
-- In the side panel, every section title folds and opens again: click it, or press its key once the panel has the keyboard (`ctrl+x tab`): `1` Configuration, `2` Statistics, `3` Activity, `4` Plan.
+- In the side panel, every section title folds and opens again: click it, or press its key once the panel has the keyboard (`ctrl+x tab`): `1` Configuration, `2` Statistics, `3` Activity, `4` Plan, `5` Session space.
 - A folded section keeps a one-line summary. For the configuration: `◆ Opus 5.5 · auto · effort high`. For the activity, the 5-hour window: how full it is, when it ends and where the current pace takes it, in the gauge's colors (`5 H 57 % · fin 15:10 (1 h 12)  ⚑ 100 % vers 14:32`).
 - The choice is kept from one session to the next.
 
@@ -67,12 +79,12 @@ Answer `y` to add the marketplace, then pick a scope. **User** makes the cockpit
 
 ### Recommended setup
 
-**1. Let Claude update the plan without asking.** The cockpit registers two tools, `mcp__cockpit__plan` and `mcp__cockpit__step`. In the default permission mode, Claude Code may ask for approval at every step. To allow them once and for all, add them to `~/.claude/settings.json`:
+**1. Let Claude update the plan without asking.** The cockpit registers three tools, `mcp__cockpit__plan`, `mcp__cockpit__step` and `mcp__cockpit__board`. In the default permission mode, Claude Code may ask for approval at every step. To allow them once and for all, add them to `~/.claude/settings.json`:
 
 ```json
 {
   "permissions": {
-    "allow": ["mcp__cockpit__plan", "mcp__cockpit__step"]
+    "allow": ["mcp__cockpit__plan", "mcp__cockpit__step", "mcp__cockpit__board"]
   }
 }
 ```
@@ -110,12 +122,12 @@ Claude Code then fetches each new version in the background a few minutes into a
 
 ## Use
 
-Nothing to do: a section of the system prompt asks Claude to declare a plan for any task of three steps or more, and to report each step as it goes. You can also ask for it: *"put the plan in the cockpit"*.
+Nothing to do: a section of the system prompt asks Claude to declare a plan for any task of three steps or more, and to report each step as it goes. Another one tells it about the session space, to follow work it orchestrates. You can also ask for it: *"put the plan in the cockpit"*, *"track the agents in the session space"*.
 
 | Command | Effect |
 | --- | --- |
 | `/cockpit` | Opens the panel again (after you closed it) |
-| `/cockpit reset` | Clears the current plan |
+| `/cockpit reset` | Clears the current plan and the session space |
 | `/cockpit close` | Closes the panel |
 | `/cockpit version` | Prints the installed version and the link to the changelog |
 | `/cockpit update` | Updates the cockpit to the latest version (the two `claude plugin` commands a terminal would run); `/reload-plugins` then loads it |
@@ -143,6 +155,7 @@ The cockpit is a Claude Code **mod**: a hooks module (`hooks/register.tsx`) that
 | Execution mode | the `permission_mode` of hook inputs, and between turns the prompt footer's hint: on `shift+tab` the footer is read once with the mode being left, so the cockpit takes the next mode in the cycle it has seen |
 | Background work | `classic.Stop` (`background_tasks`), `SubagentStart` / `SubagentStop`, background `Bash` calls, task-end notifications (`prompt.submit`), `$.agent.list()` |
 | The plan | its own tools `mcp__cockpit__plan` / `mcp__cockpit__step`, plus `TodoWrite` and the task tools |
+| The session space | its own tool `mcp__cockpit__board`, nothing else |
 
 The calibration samples (the last 60 measured steps) the latest finished plans (the last 40, all sessions together, each tagged with its session) and the panel sections you folded are kept in the plugin's local store, under your Claude Code configuration directory. **Nothing about you or your sessions is sent anywhere.** The only request the cockpit makes is to the GitHub API, at most once an hour, to read the latest release's number. It does not make it when `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set.
 

@@ -100,6 +100,43 @@ export type Memory = {
   recent: PlanSummary[]
 }
 
+/** A board item's state: a plan step's, or failed, as work done by others can be. */
+export type BoardStatus = StepStatus | 'failed'
+
+/** One line of the session space: a piece of work the session follows, done by itself or by others. */
+export type BoardItem = {
+  /** The session's own key for it (`PHAR-12`, `lot-3`): an update names it again. */
+  id: string
+  title: string
+  status: BoardStatus
+  /** Who does it: an agent, a person, a service. */
+  owner?: string
+  note?: string
+  /** 0 to 100, when the session knows it. */
+  progress?: number
+  /** When it first ran, and when it closed: its time on the board. */
+  startedAt?: number
+  endedAt?: number
+}
+
+export type BoardTone = 'ok' | 'warn' | 'hot'
+
+/** A figure the session wants in sight: `tickets traités 12/40`. */
+export type BoardMetric = { label: string; value: string; tone?: BoardTone }
+
+/** A line of the session space's log, newest last. */
+export type BoardEvent = { at: number; text: string; tone?: BoardTone }
+
+/** The session space: what the session chose to show the operator, apart from its own plan. */
+export type Board = {
+  title: string
+  createdAt: number
+  updatedAt: number
+  items: BoardItem[]
+  metrics: BoardMetric[]
+  log: BoardEvent[]
+}
+
 export type Tick = { n: number; now: number }
 
 declare module 'claude-code' {
@@ -108,6 +145,8 @@ declare module 'claude-code' {
       tick: Tick
       activity: Activity
       plan: Plan | null
+      /** The session space, fed through `mcp__cockpit__board`. */
+      board: Board | null
       working: boolean
       bg: BgTask[]
       memory: Memory
