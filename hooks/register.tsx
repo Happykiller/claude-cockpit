@@ -28,6 +28,11 @@ const CLOSED = 'closed'
 const CYCLE = 'cycle'
 /** The latest release seen, when it was checked, and the one a toast announced. */
 const LATEST = 'latest'
+/** The dock's width the person chose as theirs, in body columns. */
+const WIDTH = 'width'
+const WIDTH_DEFAULT = 62
+/** How long the dock's width stays on show after its last change. */
+const RESIZE_MS = 3000
 const CHECK_MS = 60 * 60_000
 /** After a failed check, the next try. */
 const RETRY_MS = 15 * 60_000
@@ -42,6 +47,8 @@ const TONES: readonly BoardTone[] = ['ok', 'warn', 'hot']
 const GUIDE = `## Cockpit — plan d'exécution
 
 L'opérateur suit ton avancement dans un cockpit affiché à côté de la conversation. Dès qu'un travail compte au moins trois étapes ou durera plus de quelques minutes, déclare-le d'abord avec \`mcp__cockpit__plan\` : une étape par jalon vérifiable, chacune avec ton estimation honnête de sa durée en minutes (\`estimate_min\`). Puis signale chaque transition avec \`mcp__cockpit__step\` : \`in_progress\` au moment où tu attaques l'étape (une étape close sans avoir été ouverte n'est pas chronométrée), \`completed\` quand elle est tenue, \`blocked\` quand tu attends l'opérateur, avec une note courte sur ce que tu fais. Quand l'opérateur a répondu, l'étape bloquée repart en \`in_progress\` ; clos-la avant de passer à la suivante. Si une estimation change nettement en cours de route, renvoie-la. Ces appels ne remplacent pas les comptes rendus à l'opérateur, et un sous-agent ne les fait pas.
+
+Ne laisse jamais le plan figé. Avant ta réponse finale, clos l'étape en cours (\`completed\`, ou \`skipped\` si elle n'a pas été faite) : un plan fini se replie de lui-même. \`blocked\` veut dire que tu attends une réponse de l'opérateur pour continuer, jamais que le travail s'arrête. Si le travail s'arrête avant la fin du plan (l'opérateur te demande d'arrêter ou de fermer, ou passe à autre chose), passe l'étape en cours et toutes les étapes restantes en \`skipped\`, chacune avec une note qui dit où tu en es resté. Si l'opérateur t'a interrompu (Échap), y compris pendant une question, commence le tour suivant par remettre le plan d'aplomb.
 
 ## Cockpit — espace session
 
@@ -60,6 +67,10 @@ let nextCheck = 0
 let lastPoll = 0
 /** The context fill that last raised the compaction alert, so it rings once per approach. */
 let compactWarned = false
+/** The dock's width as last drawn, when it last changed, and the width aimed at. */
+let paneCols: number | undefined
+let resizedAt = 0
+let targetCols: number | undefined
 
 const POLL_MS = 15_000
 
@@ -237,6 +248,21 @@ async function loadFolds($: EngineInterface) {
   if (Array.isArray(kept)) await $.state.set({ plugin: 'cockpit', key: 'closed' }, kept.filter((x): x is string => typeof x === 'string'))
 }
 
+async function loadWidth($: EngineInterface) {
+  const kept = await $.store.get(WIDTH)
+  if (typeof kept === 'number' && Number.isInteger(kept) && kept > 0) targetCols = kept
+}
+
+/** `/cockpit largeur [n]`: the width aimed at, the dock's own when no number is given. */
+async function setWidth($: EngineInterface, arg: string): Promise<string> {
+  const cols = arg === '' ? paneCols : Number(arg)
+  if (cols === undefined) return 'Cockpit : ouvre le panneau sur le côté, puis relance /cockpit largeur.'
+  if (!Number.isInteger(cols) || cols < 20 || cols > 400) return `Cockpit : « ${arg} » n’est pas une largeur (un nombre de colonnes, de 20 à 400).`
+  targetCols = cols
+  await $.store.set(WIDTH, cols)
+  return `Cockpit : largeur de référence ${cols} colonnes. En redimensionnant le panneau, sa largeur s’affiche en haut à droite, avec ✓ à ${cols}.`
+}
+
 async function notify($: EngineInterface, text: string) {
   $.ui.toast(text)
   await $.ui.notify(text, { title: 'Cockpit' }).catch(() => undefined)
@@ -289,7 +315,7 @@ async function refresh($: EngineInterface) {
 }
 
 async function openPane($: EngineInterface) {
-  return $.ui.open({ id: PANE, title: 'Cockpit', rows: 14, columns: 62 })
+  return $.ui.open({ id: PANE, title: 'Cockpit', rows: 14, columns: targetCols ?? WIDTH_DEFAULT })
 }
 
 function asText(v: unknown): string | undefined {
@@ -363,7 +389,7 @@ export const register: Register = on => {
     void $.clock.now().then(now => checkUpdate($, now)).catch(() => undefined)
     await $.command.register({
       name: 'cockpit',
-      description: 'Ouvre le cockpit : activité de la session, frise du plan et espace session (« /cockpit reset » efface le plan et l’espace session, « /cockpit version » donne la version, « /cockpit update » met à jour)',
+      description: 'Ouvre le cockpit : activité de la session, frise du plan et espace session (« /cockpit reset » efface le plan et l’espace session, « /cockpit version » donne la version, « /cockpit update » met à jour, « /cockpit largeur [n] » fixe la largeur de référence du panneau)',
     })
     await $.tool.register({
       name: 'plan',
@@ -454,6 +480,7 @@ export const register: Register = on => {
     await refresh($).catch(() => undefined)
     await loadMemory($).catch(() => undefined)
     await loadFolds($).catch(() => undefined)
+    await loadWidth($).catch(() => undefined)
     startTimer($, false)
     void openPane($)
     return next(e)
@@ -475,6 +502,7 @@ export const register: Register = on => {
       return { text: `Cockpit ${VERSION} · nouveautés : ${CHANGELOG_URL}${how}${auto}` }
     }
     if (arg === 'update') return { text: await selfUpdate($) }
+    if (arg === 'largeur' || arg.startsWith('largeur ')) return { text: await setWidth($, arg.slice('largeur'.length).trim()) }
     if (arg === 'close') {
       await $.ui.close({ id: PANE })
       return { text: 'Cockpit fermé.' }
@@ -736,19 +764,26 @@ export const register: Register = on => {
     const [t, stored, p, b, w, tasks, folded] = await Promise.all([read($, tick), read($, activity), read($, plan), read($, board), read($, working), read($, bg), read($, closed)])
     // Un état conservé par une version antérieure du mod peut manquer d'un champ né depuis.
     const a: Activity = { ...stored, limits: stored.limits ?? [], history: stored.history ?? [], flow: stored.flow ?? [] }
+    const now = t.now || (await $.clock.now())
+    const cols = e.props.bodyColumns
+    if (e.props.placement === 'dock' && cols !== paneCols) {
+      if (paneCols !== undefined) resizedAt = now
+      paneCols = cols
+    }
     const d = {
       activity: a,
       history: a.history,
       plan: p,
       board: b ?? null,
       n: t.n,
-      now: t.now || (await $.clock.now()),
+      now,
       working: w,
       bg: tasks ?? [],
       closed: folded ?? [],
       tz: a.tzOffsetMin ?? 0,
-      cols: e.props.bodyColumns,
+      cols,
       rows: e.props.scroll.bodyRows,
+      resize: now - resizedAt < RESIZE_MS ? { target: targetCols ?? WIDTH_DEFAULT } : undefined,
     }
     return e.props.placement === 'dock' ? <Dock E={E} d={d} /> : <Band E={E} d={d} />
   })

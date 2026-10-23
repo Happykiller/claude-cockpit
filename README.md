@@ -129,6 +129,7 @@ Nothing to do: a section of the system prompt asks Claude to declare a plan for 
 | `/cockpit` | Opens the panel again (after you closed it) |
 | `/cockpit reset` | Clears the current plan and the session space |
 | `/cockpit close` | Closes the panel |
+| `/cockpit largeur [n]` | Sets the side panel's reference width, the current one without `n`: while you resize the panel, its width shows in the top right corner, with ✓ on that width |
 | `/cockpit version` | Prints the installed version and the link to the changelog |
 | `/cockpit update` | Updates the cockpit to the latest version (the two `claude plugin` commands a terminal would run); `/reload-plugins` then loads it |
 

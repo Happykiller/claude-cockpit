@@ -1,6 +1,6 @@
 {
   "name": "cockpit",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Animated cockpit for Claude Code: live session activity (model, effort, mode, limits, context) and a timeline of the execution plan",
   "author": { "name": "Happykiller" },
   "homepage": "https://github.com/Happykiller/claude-cockpit",

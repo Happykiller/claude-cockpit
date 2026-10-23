@@ -26,6 +26,8 @@ export type ViewData = {
   tz: number
   cols: number
   rows: number
+  /** Set while the person resizes the dock: the width aimed at, which `cols` is read against. */
+  resize?: { target: number }
 }
 
 // The terminal's own sixteen colors (`ansi256(0..15)`: 4 blue, 6 cyan, 8
@@ -414,8 +416,9 @@ function stepTime(T: T, s: Step, now: number) {
   const est = s.estimateMin === undefined ? undefined : s.estimateMin * MIN
   if (s.status === 'pending') return <T color={DM}>{`~${fmtEstimate(s.estimateMin)}`}</T>
   if (s.status === 'skipped') return <T color={FA}>—</T>
-  if (s.untimed) return <T color={DM}>{`— / ${fmtEstimate(s.estimateMin)}`}</T>
   const el = stepElapsed(s, now)
+  // Closed unopened: its time runs from the step before's end, a guess shown as one.
+  if (s.untimed) return <T><T color={WH}>{`≈ ${fmtDur(el)}`}</T><T color={DM}>{` / ${fmtEstimate(s.estimateMin)}`}</T></T>
   const isOver = est !== undefined && el > est * 1.05
   const isRunning = s.status === 'in_progress' || s.status === 'blocked'
   return (
@@ -501,6 +504,13 @@ function Cache({ E, d }: { E: Els; d: ViewData }) {
 
 // ── The side panel ─────────────────────────────────────────────────────────
 
+/** The dock's width while the person drags it: ✓ on the width aimed at, else the way to it. */
+function Width({ T, cols, target }: { T: T; cols: number; target: number }) {
+  if (cols === target) return <T><T bold color={OK}>↔ {cols} col ✓</T></T>
+  const gap = target - cols
+  return <T><T bold color={ACC}>↔ {cols} col</T><T color={DM}>  {gap > 0 ? '+' : '−'}{Math.abs(gap)} → {target}</T></T>
+}
+
 export function Dock({ E, d }: { E: Els; d: ViewData }) {
   const { Box, Text } = E
   const W = Math.max(30, d.cols - 2 * PAD_X)
@@ -510,7 +520,11 @@ export function Dock({ E, d }: { E: Els; d: ViewData }) {
     <Box flexDirection="column" minHeight={Math.max(1, d.rows)} paddingX={PAD_X} paddingTop={1}>
       <Box justifyContent="space-between" marginBottom={1}>
         <Text><Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text><Text color={FA}>  v{VERSION}</Text>{a.latest ? <Text color={WARN}> → v{a.latest}</Text> : null}</Text>
-        <Box flexShrink={0}><Text><Text color={DM}>{fmtClock(d.now, d.tz, true)}  </Text><Text color={live}>●</Text><Text bold color={d.working ? ACC : DM}>{d.working ? ' LIVE' : ' VEILLE'}</Text></Text></Box>
+        <Box flexShrink={0}>
+          {d.resize
+            ? <Width T={Text} cols={d.cols} target={d.resize.target} />
+            : <Text><Text color={DM}>{fmtClock(d.now, d.tz, true)}  </Text><Text color={live}>●</Text><Text bold color={d.working ? ACC : DM}>{d.working ? ' LIVE' : ' VEILLE'}</Text></Text>}
+        </Box>
       </Box>
 
       <Heading E={E} title="CONFIGURATION" width={W} fold={fold(d, 'config')} />
@@ -619,9 +633,10 @@ function DockPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
   const t = totals(plan, d.now)
   const doneIdx = plan.steps.map((s, i) => (s.status === 'completed' || s.status === 'skipped' ? i : -1)).filter(i => i >= 0 && i < (t.current < 0 ? Infinity : t.current))
   const hidden = doneIdx.length > MAX_DONE_SHOWN ? doneIdx.slice(0, doneIdx.length - MAX_DONE_SHOWN) : []
-  // Only the steps on the clock: one closed unopened has no time of its own.
-  const timed = hidden.map(i => plan.steps[i]!).filter(s => !s.untimed)
-  const hiddenMs = timed.reduce((sum, s) => sum + stepElapsed(s, d.now), 0)
+  // A step closed unopened counts its guessed time, and makes the sum a guess.
+  const folded = hidden.map(i => plan.steps[i]!)
+  const hiddenMs = folded.reduce((sum, s) => sum + stepElapsed(s, d.now), 0)
+  const isGuess = folded.some(s => s.untimed)
   const allDone = t.done === t.total && t.total > 0
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -637,7 +652,7 @@ function DockPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
           {hidden.length > 0 && (
             <Box justifyContent="space-between">
               <Text color={DM}><Text color={ACC}>✓</Text>  … {hidden.length} étapes faites</Text>
-              <Box flexShrink={0}><Text color={DM}>{timed.length > 0 ? fmtDur(hiddenMs) : '—'}</Text></Box>
+              <Box flexShrink={0}><Text color={DM}>{`${isGuess ? '≈ ' : ''}${fmtDur(hiddenMs)}`}</Text></Box>
             </Box>
           )}
           {plan.steps.map((s, i) => {
@@ -647,7 +662,7 @@ function DockPlan({ E, d, plan, W }: { E: Els; d: ViewData; plan: Plan; W: numbe
           })}
         </Box>
         <Box flexGrow={1} minHeight={1} />
-        {plan.steps.some(s => s.untimed) && <Text color={DM} wrap="truncate-end">— : étape close sans avoir été ouverte, non chronométrée</Text>}
+        {plan.steps.some(s => s.untimed) && <Text color={DM} wrap="truncate-end">≈ : étape close sans avoir été ouverte, temps compté depuis la précédente</Text>}
       </Box>}
     </Box>
   )

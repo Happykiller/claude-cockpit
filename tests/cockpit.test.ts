@@ -559,7 +559,7 @@ test('une étape bloquée le reste quand le travail avance ailleurs, et son atte
   expect(plan.steps.map(s => s.status)).toEqual(['completed', 'in_progress', 'pending'])
 })
 
-test('le résumé des étapes repliées ne compte pas le temps des étapes non chronométrées (#1)', async ($, on) => {
+test('une étape close sans avoir été ouverte montre son temps deviné, marqué ≈, résumé compris (#1)', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   quiet(on)
   mock.store(on)
@@ -574,9 +574,10 @@ test('le résumé des étapes repliées ne compte pas le temps des étapes non c
   await dock.drawn()
   const row = await dock.find({ text: /… 2 étapes faites/ })
   expect(row).toBeDefined()
-  expect(await dock.find({ type: 'Text', text: /^—$/ })).toBeDefined()
-  // Avant : les deux étapes repliées comptaient la minute devinée de chacune.
-  expect(await dock.find({ type: 'Text', text: /^2 min$/ })).toBeUndefined()
+  // Les deux étapes repliées comptent la minute devinée de chacune, et le disent.
+  expect(await dock.find({ type: 'Text', text: /^≈ 2 min$/ })).toBeDefined()
+  expect(await dock.find({ type: 'Text', text: /^≈ 1 min$/ })).toBeDefined()
+  expect(await dock.find({ text: /^— \/ 1 h/ })).toBeUndefined()
   await dock.unmount()
 })
 
@@ -640,4 +641,35 @@ test('/cockpit update sans la commande claude donne la marche à suivre', async 
   on('process.run', () => { throw new Error('claude: command not found') })
   const res = (await $.command.run({ command: 'cockpit', args: 'update' })) as { text: string }
   expect(res.text).toContain('claude plugin update cockpit@claude-cockpit')
+})
+
+test('redimensionné, le dock montre sa largeur et l’écart à la largeur de référence', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  quiet(on)
+  mock.store(on)
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('command.register', (_$, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_$, e) => ({ value: { tool: e.name } }))
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
+  await dock.drawn()
+  // À l'ouverture, l'heure : rien n'a bougé.
+  expect(await dock.find({ text: /↔/ })).toBeUndefined()
+  await dock.redraw(paneProps('dock', 59))
+  expect(await dock.find({ type: 'Text', text: /^↔ 59 col {2}\+3 → 62$/ })).toBeDefined()
+  await dock.redraw(paneProps('dock', 62))
+  expect(await dock.find({ type: 'Text', text: /^↔ 62 col ✓$/ })).toBeDefined()
+  // La largeur de référence se fixe à la largeur du moment.
+  await dock.redraw(paneProps('dock', 70))
+  const set = await $.command.run({ command: 'cockpit', args: 'largeur' })
+  expect(set.text).toContain('70 colonnes')
+  await dock.redraw(paneProps('dock', 71))
+  expect(await dock.find({ type: 'Text', text: /^↔ 71 col {2}−1 → 70$/ })).toBeDefined()
+  // Quelques secondes sans bouger, l'heure revient.
+  await clock.advance(5000)
+  await dock.redraw(paneProps('dock', 71))
+  expect(await dock.find({ text: /↔/ })).toBeUndefined()
+  expect((await $.command.run({ command: 'cockpit', args: 'largeur 12' })).text).toContain('n’est pas une largeur')
+  await dock.unmount()
 })

@@ -132,6 +132,7 @@ Rien à faire : une section du prompt système demande à Claude de déclarer un
 | `/cockpit` | Rouvre le panneau, si tu l'as fermé |
 | `/cockpit reset` | Efface le plan en cours et l'espace session |
 | `/cockpit close` | Ferme le panneau |
+| `/cockpit largeur [n]` | Fixe la largeur de référence du panneau latéral, l'actuelle sans `n` : pendant que tu redimensionnes le panneau, sa largeur s'affiche en haut à droite, avec ✓ à cette largeur |
 | `/cockpit version` | Affiche la version installée et le lien vers le journal des versions |
 | `/cockpit update` | Met le cockpit à la dernière version (les deux commandes `claude plugin` qu'on lancerait dans un terminal) ; `/reload-plugins` la charge ensuite |
 

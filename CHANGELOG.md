@@ -6,6 +6,17 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-23
+
+### Added
+
+- While you resize the side panel, its width shows in the top right corner instead of the clock (`↔ 58 col  +4 → 62`), with ✓ on the reference width, so the panel can be brought back to the same size every time. `/cockpit largeur` takes the panel's current width as the reference, `/cockpit largeur <n>` sets it; it is kept across sessions, and the panel opens at that width when no width you dragged it to is kept. Default: 62.
+
+### Changed
+
+- The system prompt tells Claude not to leave a plan frozen: close the running step before its final answer, keep `blocked` for waiting on an answer, mark the running and remaining steps `skipped` with a note when the work stops before the plan's end, and set the plan right first after an interruption (Escape), during a question included.
+- A step closed without having been opened shows its time again, marked as a guess: `≈ 7 min / 6 min`, counted from the end of the step before, instead of `— / 6 min`. The summary of the folded steps counts it too, `≈` in front. It still stays out of the calibration of the estimates.
+
 ## [0.4.0] - 2026-10-18
 
 ### Added
@@ -93,7 +104,8 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 - The plan as a timeline, from Claude's own tools `mcp__cockpit__plan` and `mcp__cockpit__step`, and from `TodoWrite` and `TaskCreate` lists.
 - Colors taken from the terminal's theme.
 
-[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Happykiller/claude-cockpit/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.1...v0.3.2
