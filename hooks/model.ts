@@ -617,3 +617,42 @@ export function project(trail: readonly (readonly [number, number])[], resetsAt:
   if (at < resetsAt) return { kind: 'cap', at: Math.max(now, at) }
   return { kind: 'reset', pct: Math.min(100, last[1] + rate * (resetsAt - last[0])) }
 }
+
+// ── What the session is told of the account's use ──────────────────────────
+
+const WINDOWS: Record<string, string> = { five_hour: 'Fenêtre 5 h', seven_day: 'Semaine', spend_limit: 'Plafond de dépense' }
+
+/**
+ * The limits as the panel shows them, in a few lines a session can act on:
+ * each window's use and renewal, where the 5-hour one is heading, the
+ * context's fill. `mcp__cockpit__usage` answers with it.
+ */
+export function usageReport(
+  r: { limits: readonly { kind: string; percentUsed: number; resetsAt?: string }[]; trail?: readonly (readonly [number, number])[]; contextPercent?: number },
+  now: number,
+  tz: number,
+): string {
+  const lines = [`Consommation du compte, lue par le cockpit à ${fmtClock(now, tz)} :`]
+  if (r.limits.length === 0) lines.push("- Fenêtres : pas encore de lecture (le moteur ne les donne qu'avec un abonnement, après une première requête).")
+  for (const l of r.limits) {
+    const name = WINDOWS[l.kind] ?? l.kind
+    const at = l.resetsAt === undefined ? undefined : Date.parse(l.resetsAt)
+    if (at !== undefined && at <= now) {
+      lines.push(`- ${name} : renouvelée à ${fmtWhen(at, now, tz)}, nouvelle lecture à venir.`)
+      continue
+    }
+    const renewal = at === undefined ? '' : `, renouvellement dans ${fmtDur(at - now)} (${fmtWhen(at, now, tz)})`
+    let pace = ''
+    if (l.kind === 'five_hour') {
+      const p = project(r.trail ?? [], at, now)
+      pace = !p
+        ? ' Rythme : pas encore lisible (dix minutes de relevés au moins).'
+        : p.kind === 'cap'
+          ? ` Au rythme actuel : 100 % vers ${fmtWhen(p.at, now, tz)}, dans ${fmtDur(p.at - now)}, avant le renouvellement.`
+          : ` Au rythme actuel : ~${Math.round(p.pct)} % au renouvellement.`
+    }
+    lines.push(`- ${name} : ${l.percentUsed} % utilisés${renewal}.${pace}`)
+  }
+  if (r.contextPercent !== undefined) lines.push(`- Contexte de cette session : ${Math.round(r.contextPercent)} % rempli.`)
+  return lines.join('\n')
+}

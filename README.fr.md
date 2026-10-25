@@ -54,6 +54,11 @@ Un panneau latéral animé pour [Claude Code](https://claude.com/claude-code). P
 - Une entrée qui passe bloquée ou en échec envoie une notification et un toast.
 - Sans espace session, le bloc ne s'affiche pas.
 
+**La consommation du compte, pour la session aussi**
+
+- L'outil `mcp__cockpit__usage` donne à la session ce que le panneau lit de la consommation du compte : le % de la fenêtre de 5 h et de la semaine, l'heure de leur renouvellement, la projection de la fenêtre de 5 h au rythme actuel, et le remplissage du contexte. Il ne fait que lire.
+- Le prompt système dit à Claude que ces limites sont celles du compte, partagées par toutes ses sessions, de les consulter avant un travail long ou avant d'ouvrir plusieurs agents, et de ralentir quand la fenêtre de 5 h va se remplir avant son renouvellement.
+
 **Des sections repliables**
 
 - Dans le panneau latéral, chaque titre de section se replie et se rouvre : un clic dessus, ou sa touche une fois le panneau sélectionné avec `ctrl+x tab` (`1` Configuration, `2` Statistiques, `3` Activité, `4` Plan, `5` Espace session).
@@ -82,12 +87,12 @@ Réponds `y` pour ajouter la marketplace, puis choisis une portée. **User** ren
 
 ### Mise en place conseillée
 
-**1. Laisser Claude tenir le plan sans demander.** Le cockpit déclare trois outils, `mcp__cockpit__plan`, `mcp__cockpit__step` et `mcp__cockpit__board`. Dans le mode de permission par défaut, Claude Code peut demander ton accord à chaque étape. Pour les autoriser une fois pour toutes, ajoute-les dans `~/.claude/settings.json` :
+**1. Laisser Claude tenir le plan sans demander.** Le cockpit déclare quatre outils, `mcp__cockpit__plan`, `mcp__cockpit__step`, `mcp__cockpit__board` et `mcp__cockpit__usage`. Dans le mode de permission par défaut, Claude Code peut demander ton accord à chaque appel. Pour les autoriser une fois pour toutes, ajoute-les dans `~/.claude/settings.json` :
 
 ```json
 {
   "permissions": {
-    "allow": ["mcp__cockpit__plan", "mcp__cockpit__step", "mcp__cockpit__board"]
+    "allow": ["mcp__cockpit__plan", "mcp__cockpit__step", "mcp__cockpit__board", "mcp__cockpit__usage"]
   }
 }
 ```
@@ -160,6 +165,7 @@ Le cockpit est un **mod** Claude Code : un module de hooks (`hooks/register.tsx`
 | Travail en fond | `classic.Stop` (`background_tasks`), `SubagentStart` / `SubagentStop`, les `Bash` lancés en fond, les notifications de fin de tâche (`prompt.submit`), `$.agent.list()` |
 | Le plan | ses outils `mcp__cockpit__plan` / `mcp__cockpit__step`, plus `TodoWrite` et les outils de tâches |
 | L'espace session | son outil `mcp__cockpit__board`, et rien d'autre |
+| Ce que répond `mcp__cockpit__usage` | `$.session.usage()`, relu à l'appel, et les relevés de la fenêtre de 5 h que garde le panneau |
 
 Le cockpit garde dans le store local du plugin, sous ton dossier de configuration Claude Code :
 - les mesures du calibrage : les 60 dernières étapes mesurées ;

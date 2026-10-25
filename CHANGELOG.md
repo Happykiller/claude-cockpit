@@ -6,6 +6,13 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-25
+
+### Added
+
+- `mcp__cockpit__usage`, a fourth tool, that only reads: the session gets what the panel shows of the account's use, the 5-hour window's and the week's percentage, when each renews, where the 5-hour window is heading at the current pace, and the context's fill. The usage is read again at the call.
+- The system prompt tells Claude these limits are the account's, shared by all its sessions: check them before a long piece of work or before opening several agents, and slow down (fewer agents at a time, what is not critical put off) when the 5-hour window is set to fill before it renews.
+
 ## [0.4.1] - 2026-10-23
 
 ### Added
@@ -104,7 +111,8 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 - The plan as a timeline, from Claude's own tools `mcp__cockpit__plan` and `mcp__cockpit__step`, and from `TodoWrite` and `TaskCreate` lists.
 - Colors taken from the terminal's theme.
 
-[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Happykiller/claude-cockpit/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.2...v0.3.3

@@ -49,6 +49,11 @@ An animated side panel for [Claude Code](https://claude.com/claude-code) that ke
 - An item that becomes blocked or fails sends a notification and a toast.
 - With no session space, the block does not show.
 
+**The account's use, for the session too**
+
+- The `mcp__cockpit__usage` tool gives the session what the panel reads of the account's use: the 5-hour window's and the week's percentage, when each renews, where the 5-hour window is heading at the current pace, and the context's fill. It only reads.
+- The system prompt tells Claude these limits are the account's, shared by all its sessions, to check them before a long piece of work or before opening several agents, and to slow down when the 5-hour window is set to fill before it renews.
+
 **Foldable sections**
 
 - In the side panel, every section title folds and opens again: click it, or press its key once the panel has the keyboard (`ctrl+x tab`): `1` Configuration, `2` Statistics, `3` Activity, `4` Plan, `5` Session space.
@@ -79,12 +84,12 @@ Answer `y` to add the marketplace, then pick a scope. **User** makes the cockpit
 
 ### Recommended setup
 
-**1. Let Claude update the plan without asking.** The cockpit registers three tools, `mcp__cockpit__plan`, `mcp__cockpit__step` and `mcp__cockpit__board`. In the default permission mode, Claude Code may ask for approval at every step. To allow them once and for all, add them to `~/.claude/settings.json`:
+**1. Let Claude update the plan without asking.** The cockpit registers four tools, `mcp__cockpit__plan`, `mcp__cockpit__step`, `mcp__cockpit__board` and `mcp__cockpit__usage`. In the default permission mode, Claude Code may ask for approval at every call. To allow them once and for all, add them to `~/.claude/settings.json`:
 
 ```json
 {
   "permissions": {
-    "allow": ["mcp__cockpit__plan", "mcp__cockpit__step", "mcp__cockpit__board"]
+    "allow": ["mcp__cockpit__plan", "mcp__cockpit__step", "mcp__cockpit__board", "mcp__cockpit__usage"]
   }
 }
 ```
@@ -157,6 +162,7 @@ The cockpit is a Claude Code **mod**: a hooks module (`hooks/register.tsx`) that
 | Background work | `classic.Stop` (`background_tasks`), `SubagentStart` / `SubagentStop`, background `Bash` calls, task-end notifications (`prompt.submit`), `$.agent.list()` |
 | The plan | its own tools `mcp__cockpit__plan` / `mcp__cockpit__step`, plus `TodoWrite` and the task tools |
 | The session space | its own tool `mcp__cockpit__board`, nothing else |
+| What `mcp__cockpit__usage` answers | `$.session.usage()`, read again at the call, and the 5-hour window's readings the panel keeps |
 
 The calibration samples (the last 60 measured steps) the latest finished plans (the last 40, all sessions together, each tagged with its session) and the panel sections you folded are kept in the plugin's local store, under your Claude Code configuration directory. **Nothing about you or your sessions is sent anywhere.** The only request the cockpit makes is to the GitHub API, at most once an hour, to read the latest release's number. It does not make it when `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set.
 

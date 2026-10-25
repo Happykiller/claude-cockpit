@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { applyBoard, boardAlerts, boardCounts, endedTasks, fmtDur, fromTodos, isNewer, measured, modeTracker, moveStep, pillOf, readFooter, releaseOf, settleFooter, parseEstimate, apportion, placeLabels, prettyModel, project, ratioOf, setPlan, spread, timeline, totals, MIN } from '../hooks/model'
+import { applyBoard, boardAlerts, boardCounts, endedTasks, fmtDur, fromTodos, isNewer, measured, modeTracker, moveStep, pillOf, readFooter, releaseOf, settleFooter, parseEstimate, apportion, placeLabels, prettyModel, project, ratioOf, setPlan, spread, timeline, totals, usageReport, MIN } from '../hooks/model'
 
 const T0 = Date.UTC(2026, 9, 10, 8, 0, 0)
 
@@ -494,6 +494,38 @@ test('repliée, l’activité garde la fenêtre de 5 h : sa fin et sa projection
   // Une heure devant soi : ambre ; moins d'une demi-heure, ce serait le corail.
   expect((await dock.find({ type: 'Text', text: /^⚑ 100 % vers 09:30$/ }))?.props.color).toBe('ansi256(3)')
   await dock.unmount()
+})
+
+test('mcp__cockpit__usage donne à la session la consommation que le cockpit affiche', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  quiet(on)
+  mock.store(on)
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  const fiveEnds = new Date(T0 + 120 * MIN).toISOString()
+  const weekEnds = new Date(T0 + (3 * 24 + 4) * 60 * MIN).toISOString()
+  let five = 40
+  const limits = () => [{ kind: 'five_hour', percentUsed: five, resetsAt: fiveEnds }, { kind: 'seven_day', percentUsed: 41, resetsAt: weekEnds }]
+  on('session.usage', () => ({ value: { startedAt: T0, context: { window: 1_000_000, percent: 34 }, rateLimits: limits() } }))
+  await $.session.measure({ context: { window: 1_000_000 }, rateLimits: limits(), changed: ['rateLimits'] })
+  await clock.advance(30 * MIN)
+  five = 60
+  // L'outil relit le moteur : la lecture à 60 % n'est passée par aucune mesure.
+  const read = await $.tool.call({ tool: 'mcp__cockpit__usage' })
+  expect(read.deny).toBeUndefined()
+  const text = String(read.result)
+  expect(text).toContain('Fenêtre 5 h : 60 % utilisés, renouvellement dans 1 h 30 (10:00).')
+  expect(text).toContain('Au rythme actuel : 100 % vers 09:30, dans 1 h 00, avant le renouvellement.')
+  expect(text).toContain('Semaine : 41 % utilisés, renouvellement dans 3 j 3 h (mar. 12:00).')
+  expect(text).toContain('Contexte de cette session : 34 % rempli.')
+})
+
+test('le relevé de consommation dit ce qui manque, et une fenêtre renouvelée', () => {
+  expect(usageReport({ limits: [] }, T0, 0)).toContain('pas encore de lecture')
+  const renewed = usageReport({ limits: [{ kind: 'five_hour', percentUsed: 98, resetsAt: new Date(T0 - MIN).toISOString() }] }, T0, 0)
+  expect(renewed).toContain('Fenêtre 5 h : renouvelée à 07:59')
+  const slow = usageReport({ limits: [{ kind: 'five_hour', percentUsed: 10, resetsAt: new Date(T0 + 60 * MIN).toISOString() }], trail: [[T0 - 20 * MIN, 8], [T0, 10]] }, T0, 120)
+  expect(slow).toContain('10 % utilisés, renouvellement dans 1 h 00 (11:00).')
+  expect(slow).toContain('~16 % au renouvellement')
 })
 
 test('les numéros de version se comparent', () => {

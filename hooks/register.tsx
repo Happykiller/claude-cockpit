@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
 import type { Activity, BgTask, Board, BoardStatus, BoardTone, ContextParts, Memory, Plan, PlanSummary, StepStatus } from '../types'
-import { addTask, addUsage, applyBoard, arriveMode, boardAlerts, endedTasks, fmtDur, fmtRatio, fromTodos, isEnded, isNewer, measured, modeTracker, moveStep, ratioOf, readFooter, releaseOf, resumeBlocked, setPlan, settleFooter, summarize } from './model'
+import { addTask, addUsage, applyBoard, arriveMode, boardAlerts, endedTasks, fmtDur, fmtRatio, fromTodos, isEnded, isNewer, measured, modeTracker, moveStep, ratioOf, readFooter, releaseOf, resumeBlocked, setPlan, settleFooter, summarize, usageReport } from './model'
 import type { BoardInput, PlanInput, Usage } from './model'
 import { Band, Dock } from './view'
 import { CHANGELOG_URL, LATEST_RELEASE_URL, MARKETPLACE, PLUGIN_ID, VERSION } from './version'
@@ -52,7 +52,11 @@ Ne laisse jamais le plan figé. Avant ta réponse finale, clos l'étape en cours
 
 ## Cockpit — espace session
 
-Le cockpit a un second bloc, distinct du plan : l'espace session, que tu remplis avec \`mcp__cockpit__board\` pour montrer à l'opérateur ce qui a du sens et que ton plan ne dit pas. Le plan reste ton propre travail, étape par étape ; ne le recopie pas dans l'espace session. Sers-t'en notamment quand tu orchestres un travail exécuté par d'autres (sous-agents, agents ouverts) : une entrée par lot ou par ticket avec son \`id\`, son exécutant (\`owner\`), son statut et une note, quelques chiffres clés (\`metrics\`), et une ligne de journal (\`event\`) à chaque fait marquant. Chaque appel complète l'espace (un \`id\` déjà vu met l'entrée à jour) ; \`reset\` repart de zéro, \`clear\` l'efface quand il n'a plus lieu d'être.`
+Le cockpit a un second bloc, distinct du plan : l'espace session, que tu remplis avec \`mcp__cockpit__board\` pour montrer à l'opérateur ce qui a du sens et que ton plan ne dit pas. Le plan reste ton propre travail, étape par étape ; ne le recopie pas dans l'espace session. Sers-t'en notamment quand tu orchestres un travail exécuté par d'autres (sous-agents, agents ouverts) : une entrée par lot ou par ticket avec son \`id\`, son exécutant (\`owner\`), son statut et une note, quelques chiffres clés (\`metrics\`), et une ligne de journal (\`event\`) à chaque fait marquant. Chaque appel complète l'espace (un \`id\` déjà vu met l'entrée à jour) ; \`reset\` repart de zéro, \`clear\` l'efface quand il n'a plus lieu d'être.
+
+## Cockpit — consommation du compte
+
+\`mcp__cockpit__usage\` te donne ce que le cockpit lit de la consommation du compte : le % utilisé de la fenêtre de 5 h et de la semaine, leur renouvellement, et la projection de la fenêtre de 5 h au rythme actuel. Ces limites sont celles du compte, partagées par toutes ses sessions. Consulte-le avant de lancer un travail long ou d'ouvrir plusieurs agents, puis de temps en temps pendant ; si la projection annonce 100 % avant le renouvellement, ralentis : moins d'agents à la fois, ce qui n'est pas critique reporté, et dis-le à l'opérateur.`
 
 // Module variables: what the next tick folds into the state. A reload loses
 // them and the next event refills them; the state itself is the host's.
@@ -477,6 +481,13 @@ export const register: Register = on => {
       },
       isDeferred: false,
     })
+    await $.tool.register({
+      name: 'usage',
+      description:
+        "Lit la consommation du compte que le cockpit affiche : le % utilisé de la fenêtre de 5 h et de la semaine, l'heure de leur renouvellement, la projection de la fenêtre de 5 h au rythme actuel, et le remplissage du contexte de cette session. En lecture seule : sers-t'en pour régler ton rythme (moins de sessions en parallèle, reporter ce qui n'est pas critique) avant d'atteindre une limite.",
+      inputSchema: { type: 'object', properties: {} },
+      isDeferred: false,
+    })
     await refresh($).catch(() => undefined)
     await loadMemory($).catch(() => undefined)
     await loadFolds($).catch(() => undefined)
@@ -609,6 +620,14 @@ export const register: Register = on => {
     await savePlan($, current, moved)
     return { result: `Étape ${index + 1} : ${status}.` }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'cockpit : le suivi du plan a échoué.' }))
+
+  // ── The account's use: the cockpit's one tool that only reads ─────────
+  on('tool.call', { tool: 'mcp__cockpit__usage' }, async $ => {
+    // A fresh reading, so the answer does not lag the poll by up to 15 s.
+    await $.session.usage().then(u => noteUsage($, u)).catch(() => undefined)
+    const [a, now] = await Promise.all([read($, activity), $.clock.now()])
+    return { result: usageReport({ limits: a.limits ?? [], trail: a.trail, contextPercent: a.contextPercent }, now, a.tzOffsetMin ?? 0) }
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'cockpit : la lecture de la consommation a échoué.' }))
 
   // ── The session space: the cockpit's third tool ──────────────────────
   on('tool.call', { tool: 'mcp__cockpit__board' }, async ($, e) => {
