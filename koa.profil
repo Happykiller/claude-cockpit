@@ -1,0 +1,25 @@
+{
+  // La seed de claude-cockpit : un agent qui développe et livre le mod cockpit de Claude Code.
+  "version": 1,
+  "nom": "claude-cockpit",
+  "utilisateur": "agent",
+  "bootstrap": "bootstrap.sh",
+  "repertoire": "~/projet",
+  // koa:poser-la-memoire, /capitalize et /cloture : la mémoire du projet (docs/KB/).
+  "plugins": ["koa@koa-skills"],
+  "agent": {
+    "nature": "claude",
+    "mode": "auto",
+    "consigne": "Prends connaissance du projet par CLAUDE.md, vérifie que les tests passent (claude plugin test .), puis attends la demande de l'opérateur."
+  },
+  "cloisonnement": {
+    "interop": false,
+    // L'opérateur partage ses captures d'écran du cockpit depuis le bureau Windows (/mnt/c/Users/…).
+    "montage_windows": true
+  },
+  "secrets": {
+    // L'identité des commits : sans elle, git refuse de committer.
+    "GIT_USER_NAME": { "requis": true },
+    "GIT_USER_EMAIL": { "requis": true }
+  }
+}

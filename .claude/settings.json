@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "koa@koa-skills": true
+  }
+}
