@@ -17,4 +17,4 @@ commits dans git.
 | 2026-10-18 | Espace session | `mcp__cockpit__board`, la section Plan se cache sans plan | v0.4.0 |
 | 2026-10-23 | Plan jamais figé | largeur de référence du dock, temps deviné des étapes non ouvertes | v0.4.1 |
 | 2026-10-25 | Consommation pour la session | `mcp__cockpit__usage`, sur suggestion d'un agent orchestrateur | v0.5.0 |
-| 2026-10-25 | Mémoire et seed KoA | `docs/KB/`, `/capitalize`, `/cloture`, `koa.profil` + `bootstrap.sh` | ce commit |
+| 2026-10-25 | Mémoire et seed KoA | `docs/KB/`, `/capitalize`, `/cloture`, `koa.profil` + `bootstrap.sh` | fd99c8d |

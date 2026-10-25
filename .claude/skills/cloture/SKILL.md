@@ -24,7 +24,7 @@ trois est fausse, la session n'est pas close — et tu le dis au lieu de conclur
 | Skill de sync data | Ce qu'il pousse en amont | Doit tourner avant l'arrêt de |
 | --- | --- | --- |
 
-Aucune synchro de données : la table reste vide.
+Aucune synchro de données : la table reste vide. Le grep de l'étape 1 trouve `cloture` elle-même (sa description dit « synchronisation ») : faux positif.
 
 Une clôture **ne livre pas de version** : elle ne monte pas le numéro et ne pose pas de tag (`docs/KB/REGLES/lois.md`, loi 2).
 
