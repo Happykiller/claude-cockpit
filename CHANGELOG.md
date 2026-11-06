@@ -6,6 +6,12 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-06
+
+### Changed
+
+- A newer version no longer shows beside the panel's title (`v0.3.0 → v0.4.0`): in a narrow panel it wrapped onto a line of its own. The title keeps the running version. The toast still announces a new version once, and `/cockpit version` repeats it.
+
 ## [0.5.0] - 2026-10-25
 
 ### Added
@@ -111,7 +117,8 @@ The version you run shows next to the panel's title (`◢◤ C O C K P I T  v0.3
 - The plan as a timeline, from Claude's own tools `mcp__cockpit__plan` and `mcp__cockpit__step`, and from `TodoWrite` and `TaskCreate` lists.
 - Colors taken from the terminal's theme.
 
-[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Happykiller/claude-cockpit/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Happykiller/claude-cockpit/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Happykiller/claude-cockpit/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Happykiller/claude-cockpit/compare/v0.3.3...v0.4.0

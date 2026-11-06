@@ -334,7 +334,7 @@ type Latest = { version?: string; checkedAt: number; toasted?: string }
 
 /**
  * Once an hour at most, all sessions together: the latest GitHub Release. Newer
- * than the one running, it shows beside the title, and a toast says it once.
+ * than the one running, a toast says it once, and `/cockpit version` on demand.
  */
 async function checkUpdate($: EngineInterface, now: number) {
   if (now < nextCheck) return

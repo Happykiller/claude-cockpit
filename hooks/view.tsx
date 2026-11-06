@@ -519,7 +519,7 @@ export function Dock({ E, d }: { E: Els; d: ViewData }) {
   return (
     <Box flexDirection="column" minHeight={Math.max(1, d.rows)} paddingX={PAD_X} paddingTop={1}>
       <Box justifyContent="space-between" marginBottom={1}>
-        <Text><Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text><Text color={FA}>  v{VERSION}</Text>{a.latest ? <Text color={WARN}> → v{a.latest}</Text> : null}</Text>
+        <Text><Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text><Text color={FA}>  v{VERSION}</Text></Text>
         <Box flexShrink={0}>
           {d.resize
             ? <Width T={Text} cols={d.cols} target={d.resize.target} />
@@ -908,7 +908,7 @@ export function Band({ E, d }: { E: Els; d: ViewData }) {
   return (
     <Box flexDirection="column" gap={1} paddingX={PAD_X}>
       <Box justifyContent="space-between">
-        <Text><Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text><Text color={FA}>  v{VERSION}</Text>{a.latest ? <Text color={WARN}> → v{a.latest}</Text> : null}</Text>
+        <Text><Text bold color={ACC}>◢◤ {spaced('COCKPIT')}</Text><Text color={FA}>  v{VERSION}</Text></Text>
         <Box flexShrink={0}>
           <Text>
             <Text bold color={WH}>◆ {prettyModel(a.model)}</Text>

@@ -2,7 +2,7 @@
 titre: Historique des sujets
 type: dat
 statut: actif
-maj: 2026-10-25
+maj: 2026-11-06
 ---
 
 # Historique
@@ -18,3 +18,4 @@ commits dans git.
 | 2026-10-23 | Plan jamais figé | largeur de référence du dock, temps deviné des étapes non ouvertes | v0.4.1 |
 | 2026-10-25 | Consommation pour la session | `mcp__cockpit__usage`, sur suggestion d'un agent orchestrateur | v0.5.0 |
 | 2026-10-25 | Mémoire et seed KoA | `docs/KB/`, `/capitalize`, `/cloture`, `koa.profil` + `bootstrap.sh` | fd99c8d |
+| 2026-11-06 | Titre du panneau allégé | la nouvelle version ne s'affiche plus à côté du titre : toast et `/cockpit version` seulement | v0.5.1 |

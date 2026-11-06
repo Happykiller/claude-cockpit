@@ -149,7 +149,7 @@ Pour mettre à jour, désactiver ou désinstaller le plugin, passe par le menu `
 
 La version installée s'affiche à côté du titre du panneau (`v0.3.0`). Ce qui change d'une version à l'autre est dans [CHANGELOG.md](CHANGELOG.md), en anglais, et sur la [page des releases](https://github.com/Happykiller/claude-cockpit/releases).
 
-Quand une version plus récente sort, le cockpit le signale : `v0.3.0 → v0.4.0` à côté du titre, et un toast, une seule fois. Avec la mise à jour automatique (étape 4 plus haut), Claude Code l'installe tout seul. Sinon, lance `/cockpit update`, puis `/reload-plugins`.
+Quand une version plus récente sort, le cockpit le signale par un toast, une seule fois, et `/cockpit version` le redit. Avec la mise à jour automatique (étape 4 plus haut), Claude Code l'installe tout seul. Sinon, lance `/cockpit update`, puis `/reload-plugins`.
 
 `/reload-plugins` seul ne charge que ce qui est déjà sur le disque : il ne va pas chercher de nouvelle version.
 

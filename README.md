@@ -146,7 +146,7 @@ To update, disable or uninstall the plugin, use the `/plugin` menu.
 
 The installed version shows next to the panel's title (`v0.3.0`). What changed from one version to the next is in [CHANGELOG.md](CHANGELOG.md), and on the [releases page](https://github.com/Happykiller/claude-cockpit/releases).
 
-When a newer version is released, the cockpit says so: `v0.3.0 → v0.4.0` beside the title, and a toast, once. With auto-update on (step 4 above), Claude Code installs it by itself. Otherwise, run `/cockpit update`, then `/reload-plugins`.
+When a newer version is released, the cockpit says so in a toast, once, and `/cockpit version` repeats it. With auto-update on (step 4 above), Claude Code installs it by itself. Otherwise, run `/cockpit update`, then `/reload-plugins`.
 
 `/reload-plugins` alone loads only what is already on disk: it does not fetch a new version.
 

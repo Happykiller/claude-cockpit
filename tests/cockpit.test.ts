@@ -539,7 +539,7 @@ test('les numéros de version se comparent', () => {
   expect(isNewer('1.0.0', '0.9.9')).toBe(false)
 })
 
-test('une version publiée plus récente s’annonce à côté du titre, et un toast le dit une fois', async ($, on) => {
+test('une version publiée plus récente s’annonce par un toast, une fois, sans toucher au titre du panneau', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   mock.store(on)
   const toasts: string[] = []
@@ -559,7 +559,8 @@ test('une version publiée plus récente s’annonce à côté du titre, et un t
   await clock.advance(20_000)
   const dock = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: paneProps('dock', 58), viewport: { columns: 200, rows: 60, isFullscreen: true } })
   await dock.drawn()
-  expect(await dock.find({ type: 'Text', text: / → v9\.0\.0$/ })).toBeDefined()
+  expect(await dock.find({ text: /C O C K P I T/ })).toBeDefined()
+  expect(await dock.find({ text: /9\.0\.0/ })).toBeUndefined()
   expect(toasts.filter(t => t.includes('9.0.0'))).toHaveLength(1)
   expect(asked).toEqual(['https://api.github.com/repos/Happykiller/claude-cockpit/releases/latest'])
   await dock.unmount()
