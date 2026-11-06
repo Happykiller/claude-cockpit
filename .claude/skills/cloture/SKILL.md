@@ -15,7 +15,7 @@ trois est fausse, la session n'est pas close — et tu le dis au lieu de conclur
 
 | Dépôt | Chemin | Branche de travail | Remarque |
 | --- | --- | --- | --- |
-| claude-cockpit | `.` (`~/projet`) | `master` | public ; tests : `claude plugin test .` ; push direct sur `master` |
+| claude-cockpit | `.` (`~/projet` en distro de dev, `~/claude-cockpit` sur la Debian) | `master` | public ; tests : `claude plugin test .` ; push direct sur `master` |
 
 | Stack | Fichier compose | Services |
 | --- | --- | --- |

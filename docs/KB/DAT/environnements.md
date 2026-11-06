@@ -2,7 +2,7 @@
 titre: Environnements — dev, live, release
 type: dat
 statut: actif
-maj: 2026-10-25
+maj: 2026-11-06
 ---
 
 # Environnements
@@ -21,6 +21,20 @@ Le projet vit dans une distro WSL créée par KoA (`claude-cockpit`, utilisateur
 - **Mode auto** : le classifieur refuse certains gestes (supprimer un tag distant, installer un plugin
   d'une marketplace). Les donner à l'opérateur, à lancer avec `! <commande>`.
 - Le montage Windows est ouvert : l'opérateur y partage des captures (`/mnt/c/Users/…`).
+
+## La distro Debian de l'opérateur
+
+Le dépôt vit aussi dans `~/claude-cockpit` (utilisateur `happykiller`), avec d'autres réglages que la
+distro de dev. Vérifier où l'on est avant de suivre une procédure (`whoami`, `$WSL_DISTRO_NAME`).
+
+- **Pousser** : `origin` est en HTTPS et `gh` est authentifié. `gh auth setup-git` est posé dans le
+  `~/.gitconfig` global (2026-11-06), donc un simple `git push origin <ref>` passe par le jeton de `gh`.
+  La clé SSH n'est pas utilisée : elle a été refusée pour ses permissions trop ouvertes.
+- **`gh` répond** : `gh run list --workflow release.yml` donne l'état d'un workflow.
+- **Le cockpit installé est ce dépôt** : la marketplace est locale, et `/reload-plugins` relit
+  `~/claude-cockpit`. Il charge donc aussi ce qui n'est pas committé, et `/cockpit update` n'est pas
+  nécessaire ici pour voir une version.
+- **Pas de `docker`** dans cette distro.
 
 ## Le mod en live
 
